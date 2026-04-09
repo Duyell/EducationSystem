@@ -26,7 +26,8 @@
         <mybatis.version>3.0.3</mybatis.version>
         <lombok.version>1.18.30</lombok.version>
         <spring-boot.version>3.3.4</spring-boot.version>
-        <mysql.veison>8.2.0</mysql.veison>
+        <mysql.veison>9.3.0</mysql.veison>
+        <jwt.version>0.11.5</jwt.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -50,6 +51,12 @@
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-starter-web</artifactId>
+                <version>${spring-boot.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-security</artifactId>
                 <version>${spring-boot.version}</version>
             </dependency>
 
@@ -86,6 +93,26 @@
                 <artifactId>spring-boot-starter-test</artifactId>
                 <version>${spring-boot.version}</version>
                 <scope>test</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-api</artifactId>
+                <version>${jwt.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jwt.version}</version>
+                <scope>runtime</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
+                <version>${jwt.version}</version>
+                <scope>runtime</scope>
             </dependency>
 
         </dependencies>
