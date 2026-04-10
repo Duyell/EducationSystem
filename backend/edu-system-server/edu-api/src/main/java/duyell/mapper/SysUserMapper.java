@@ -16,4 +16,10 @@ public interface SysUserMapper {
      */
     @Select("select * from sys_user where username = #{username}")
     SysUser selectByUsername(String username);
+
+    @Select("select teacher_name from teacher where teacher_id = #{teacherId}")
+    String selectByTeacherid(String teacherId);
+
+    @Select("select student_name from student where student_id = #{studentId}")
+    String selectByStudentid(String studentId);
 }

@@ -57,6 +57,15 @@ public class SysUserServiceImpl implements SysUserService {
         resp.setToken(token);
         resp.setUsername(user.getUsername());
         resp.setRole(user.getRole());
+        String teacher = "teacher";
+        String student = "student";
+        if(teacher.equals(user.getRole())){
+            resp.setName(sysUserMapper.selectByTeacherid(user.getUsername()));
+        }else if(student.equals(user.getRole())){
+            resp.setName(sysUserMapper.selectByStudentid(user.getUsername()));
+        }else{
+            resp.setName(user.getRole());
+        }
         return resp;
     }
 
@@ -65,7 +74,7 @@ public class SysUserServiceImpl implements SysUserService {
         // 1. 从请求头获取 token
         String token = request.getHeader("token");
 
-        if (StringUtils.isEmpty(token)) {
+        if (!StringUtils.hasText(token)) {
             throw new RuntimeException("未登录，无法登出");
         }
 

@@ -12,7 +12,14 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class LoginRespDTO {
+    /**
+     *  token
+     *  角色职位
+     *  用户名
+     *  姓名
+     */
     private String token;
     private String role;
     private String username;
+    private String name;
 }
