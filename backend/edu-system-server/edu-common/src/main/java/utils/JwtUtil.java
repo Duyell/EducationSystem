@@ -18,10 +18,14 @@ import java.util.Map;
 public class JwtUtil {
 
     private static final String SECRET_KEY = "edu_system_secret_key_1234567890_abcdefg";
-    // 过期时间：7天（单位：毫秒）
-    private static final long EXPIRATION = 7 * 24 * 60 * 60 * 1000L;
+    /** 过期时间：5分钟（单位：毫秒）*/
+    private static final long EXPIRATION = 5 * 60 * 1000L;
 
-    // 生成Token
+    /**
+     * 生成Token
+     * @param username 用户名
+     * @param role     角色
+     */
     public String generateToken(String username, String role) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("role", role);
@@ -35,7 +39,9 @@ public class JwtUtil {
                 .compact();
     }
 
-    // 解析Token，获取Claims
+    /** 解析Token，获取Claims
+     * @param token token对象
+     */
     public Claims parseToken(String token) {
         SecretKey key = Keys.hmacShaKeyFor(SECRET_KEY.getBytes());
         return Jwts.parserBuilder()
@@ -45,17 +51,17 @@ public class JwtUtil {
                 .getBody();
     }
 
-    // 从Token中获取用户名
+    /** 从Token中获取用户名*/
     public String getUsernameFromToken(String token) {
         return parseToken(token).getSubject();
     }
 
-    // 从Token中获取角色
+    /** 从Token中获取角色*/
     public String getRoleFromToken(String token) {
         return parseToken(token).get("role", String.class);
     }
 
-    // 校验Token是否过期
+    /**校验Token是否过期 */
     public boolean isTokenExpired(String token) {
         return parseToken(token).getExpiration().before(new Date());
     }
