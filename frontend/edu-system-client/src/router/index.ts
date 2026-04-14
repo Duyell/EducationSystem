@@ -9,6 +9,12 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: () => import('../views/Login.vue')
+  },
+  {
+    path: '/index',  // 必须全小写！
+    name: 'Index',
+    component: () => import('../views/Index.vue'),
+    meta: { requireAuth: true } // 需要登录才能访问
   }
 ]
 

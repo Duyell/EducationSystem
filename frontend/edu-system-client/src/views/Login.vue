@@ -41,9 +41,11 @@ import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 import type { FormInstance } from 'element-plus'
+import { useRouter } from 'vue-router'
 
 const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
+const router = useRouter()
 
 const loginForm = reactive({
   username: '',
@@ -67,7 +69,7 @@ const handleLogin = async () => {
   loading.value = true
 
   try {
-    const res = await axios.post('http://localhost:8080/login', {
+    const res = await axios.post('/api/login', {
       username: loginForm.username,
       password: loginForm.password
     })
@@ -75,6 +77,8 @@ const handleLogin = async () => {
     const token = res.data.token
     sessionStorage.setItem('token', token)
     ElMessage.success('登录成功')
+
+    router.push('/Index')
   } catch (err: any) {
     ElMessage.error('登录失败：' + (err.response?.data || '用户名或密码错误'))
   } finally {
