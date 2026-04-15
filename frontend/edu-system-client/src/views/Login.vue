@@ -74,8 +74,9 @@ const handleLogin = async () => {
       password: loginForm.password
     })
 
-    const token = res.data.token
-    sessionStorage.setItem('token', token)
+    const loginInfo = res.data
+    sessionStorage.setItem('token', loginInfo.token)
+    sessionStorage.setItem('user', JSON.stringify(loginInfo))
     ElMessage.success('登录成功')
 
     router.push('/Index')
