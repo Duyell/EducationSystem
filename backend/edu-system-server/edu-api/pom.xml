@@ -63,6 +63,12 @@
         </dependency>
 
         <dependency>
+            <groupId>com.github.pagehelper</groupId>
+            <artifactId>pagehelper-spring-boot-starter</artifactId>
+            <version>1.4.7</version>
+        </dependency>
+
+        <dependency>
             <groupId>com.duyell</groupId>
             <artifactId>edu-pojo</artifactId>
             <version>0.0.1-SNAPSHOT</version>

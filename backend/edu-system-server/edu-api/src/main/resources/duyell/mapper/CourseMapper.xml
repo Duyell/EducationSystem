@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="duyell.mapper.CourseMapper">
+    <update id="update">
+        update course
+        <set>
+            <if test="courseName != null and courseName != ''">
+                course_name = #{courseName},
+            </if>
+            <if test="teacherId != null and teacherId != ''">
+                teacher_id = #{teacherId},
+            </if>
+            <if test="collegeId != null  ">
+                college_id = #{collegeId},
+            </if>
+            <if test="term != null and term != ''">
+                term = #{term},
+            </if>
+            <if test="credit != null">
+                credit = #{credit},
+            </if>
+            <if test="classHour != null ">
+                classHour = #{classHour},
+            </if>
+            <if test="maxStudent != null ">
+                maxStudent = #{maxStudent},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+    <delete id="deleteByIds">
+        delete from course where id in
+        <foreach collection="ids" item="id" separator="," open="(" close=")">
+            #{id}
+        </foreach>
+    </delete>
+</mapper>

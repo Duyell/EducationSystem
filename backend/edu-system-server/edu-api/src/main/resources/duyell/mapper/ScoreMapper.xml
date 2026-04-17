@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="duyell.mapper.ScoreMapper">
+    <update id="update">
+        update score
+        <set>
+            <if test="usual_score != null">
+                usual_score = #{usual_score},
+            </if>
+            <if test="exam_score != null">
+                exam_score = #{exam_score},
+            </if>
+            <if test="total_score != null">
+                total_score = #{total_score},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+</mapper>

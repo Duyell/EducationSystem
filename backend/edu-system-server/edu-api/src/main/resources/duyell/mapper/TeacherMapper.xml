@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="duyell.mapper.TeacherMapper">
+    <update id="updateTeacher">
+            update teacher
+        <set>
+            <if test="teacherName != null and teacherName != ''">
+                teacher_name = #{teacherName},
+            </if>
+            <if test="teacherId != null and teacherId != ''">
+                teacher_id = #{teacherId},
+            </if>
+            <if test="gender != null and gender != ''">
+                gender = #{gender},
+            </if>
+            <if test="birthday != null and birthday != ''">
+                birthday = #{birthday},
+            </if>
+            <if test="phone != null and phone != ''">
+                phone = #{phone},
+            </if>
+            <if test="email != null and email != ''">
+                email = #{email},
+            </if>
+            <if test="collegeId != null ">
+                college_id = #{collegeId},
+            </if>
+            <if test="title != null and title != ''">
+                title = #{title},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteTeacherByIds">
+        delete from teacher where id in
+        <foreach collection="ids" item="id" separator="," open="(" close=")">
+            #{id}
+        </foreach>
+    </delete>
+    <delete id="deleteTeacherByTeacherIds">
+        delete from teacher where teacher_id in
+        <foreach collection="teacherIds" item="id" separator="," open="(" close=")">
+            #{id}
+        </foreach>
+    </delete>
+</mapper>

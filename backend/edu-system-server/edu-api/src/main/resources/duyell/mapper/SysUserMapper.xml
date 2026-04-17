@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="duyell.mapper.SysUserMapper">
+    <update id="update">
+            update student
+            <set>
+                <if test="username != null and username != ''">
+                    username = #{username},
+                </if>
+                <if test="password != null and password != ''">
+                    password = #{password},
+                </if>
+                <if test="status != null ">
+                    status = #{status},
+                </if>
+                <if test="role != null and role != ''">
+                    role = #{role},
+                </if>
+                <if test="phone != null and phone != ''">
+                    phone = #{phone},
+                </if>
+                <if test="email != null and email != ''">
+                    email = #{email},
+                </if>
+            </set>
+            where id = #{id}
+    </update>
+
+    <delete id="deleteByIds">
+        delete from sys_user where id in
+            <foreach collection="ids" item="id" separator="," open="(" close=")">
+                #{id}
+            </foreach>
+    </delete>
+</mapper>

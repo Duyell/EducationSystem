@@ -1,8 +1,12 @@
 package duyell.mapper;
 
 import com.duyell.SysUser;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
 
 /**
  * @author duyell
@@ -31,7 +35,7 @@ public interface SysUserMapper {
      * @return 学生名称
      */
     @Select("select student_name from student where student_id = #{studentId}")
-    String selectByStudentid(String studentId);
+    String selectByStudentId(String studentId);
 
     /**
      * 统计学生数量
@@ -46,4 +50,38 @@ public interface SysUserMapper {
      */
     @Select("select count(*) from sys_user where role = 'teacher'")
     int countTeacher();
+
+    /**
+     * 分页查询
+     * @return 查询列表
+     */
+    @Select("select * from sys_user")
+    public List<SysUser> list();
+
+    /**
+     * 添加用户
+     * @param sysUser 用户对象
+     */
+    @Insert("insert into sys_user(username,password,email,phone,role) values(#{username},#{password},#{email},#{phone},#{role})")
+    @Options(useGeneratedKeys = true, keyProperty = "id")
+    void add(SysUser sysUser);
+
+    /**
+     * 批量删除用户
+     * @param ids 用户id的集合
+     */
+    void deleteByIds(List<String> ids);
+
+    /**
+     * 更新用户
+     * @param sysUser 用户对象
+     */
+    void update(SysUser sysUser);
+
+    /**
+     * 统计用户数量
+     * @return 用户数量
+     */
+    @Select("select count(*) from sys_user")
+    int countSysUser();
 }

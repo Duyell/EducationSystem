@@ -8,7 +8,7 @@ import login.LoginRespDTO;
  * @author duyell
  * 用户服务
  */
-public interface SysUserService {
+public interface LoginService {
     /**
      * 登录
      * @param loginReqDTO 登录参数

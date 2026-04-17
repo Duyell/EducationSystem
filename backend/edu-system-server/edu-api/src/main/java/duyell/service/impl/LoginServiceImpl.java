@@ -2,7 +2,7 @@ package duyell.service.impl;
 
 import com.duyell.SysUser;
 import duyell.mapper.SysUserMapper;
-import duyell.service.SysUserService;
+import duyell.service.LoginService;
 import jakarta.servlet.http.HttpServletRequest;
 import login.LoginReqDTO;
 import login.LoginRespDTO;
@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Service
 @RequiredArgsConstructor
-public class SysUserServiceImpl implements SysUserService {
+public class LoginServiceImpl implements LoginService {
 
     private final SysUserMapper sysUserMapper;
     private final JwtUtil jwtUtil;
@@ -62,7 +62,7 @@ public class SysUserServiceImpl implements SysUserService {
         if(teacher.equals(user.getRole())){
             resp.setName(sysUserMapper.selectByTeacherid(user.getUsername()));
         }else if(student.equals(user.getRole())){
-            resp.setName(sysUserMapper.selectByStudentid(user.getUsername()));
+            resp.setName(sysUserMapper.selectByStudentId(user.getUsername()));
         }else{
             resp.setName(user.getRole());
         }

@@ -1,6 +1,6 @@
 package duyell.controller;
 
-import duyell.service.SysUserService;
+import duyell.service.LoginService;
 import jakarta.servlet.http.HttpServletRequest;
 import login.LoginReqDTO;
 import login.LoginRespDTO;
@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping
 public class LoginController {
 
-    private final SysUserService sysUserService;
+    private final LoginService sysUserService;
 
     @PostMapping("/login")
     public LoginRespDTO login(@RequestBody LoginReqDTO loginReqDTO) {
