@@ -4,7 +4,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="duyell.mapper.SysUserMapper">
     <update id="update">
-            update student
+            update sys_user
             <set>
                 <if test="username != null and username != ''">
                     username = #{username},
@@ -32,6 +32,12 @@
         delete from sys_user where id in
             <foreach collection="ids" item="id" separator="," open="(" close=")">
                 #{id}
+            </foreach>
+    </delete>
+    <delete id="deleteByUsernames">
+        delete from sys_user where username in
+            <foreach collection="usernames" item="username" separator="," open="(" close=")">
+                #{username}
             </foreach>
     </delete>
 </mapper>

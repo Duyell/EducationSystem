@@ -62,13 +62,13 @@ public class SysUserServiceImpl implements SysUserService {
         String stu = "student";
         String tea = "teacher";
         if(stu.equals(sysUser.getRole())){
-            studentMapper.deleteStudentByIds(List.of(sysUser.getUsername()));
+            studentMapper.deleteStudentByStudentIds(List.of(sysUser.getUsername()));
         }else if (tea.equals(sysUser.getRole())) {
-            teacherMapper.deleteTeacherByIds(List.of(sysUser.getUsername()));
+            teacherMapper.deleteTeacherByTeacherIds(List.of(sysUser.getUsername()));
         }else{
             throw new RuntimeException("管理员账号不可删除");
         }
-        sysUserMapper.deleteByIds(List.of(username));
+        sysUserMapper.deleteByUsernames(List.of(username));
     }
 
     @Override

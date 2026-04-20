@@ -51,7 +51,7 @@ public interface StudentMapper {
      * 根据用户id批量删除学生
      * @param ids 用户id的集合
      */
-    void deleteStudentByIds(List<String> ids);
+    void deleteStudentByIds(List<Integer> ids);
 
     /**
      * 根据学号批量删除学生

@@ -4,7 +4,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="duyell.mapper.ClazzMapper">
 
-    <update id="update" parameterType="Clazz">
+    <update id="update" >
         update clazz
         <set>
             <if test="clazzName != null and clazzName != ''">

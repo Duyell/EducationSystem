@@ -24,7 +24,7 @@ public interface TeacherMapper {
      * @param teacher 教师对象
      */
     @Insert("insert into teacher(teacher_name,teacher_id,user_id,gender,birthday,phone,email,college_id,title) " +
-            "values(#{teacherName},#{teacherId},#{userId},#{gender},#{birthday},#{phone},#{email},#{collegeId},#{titile})")
+            "values(#{teacherName},#{teacherId},#{userId},#{gender},#{birthday},#{phone},#{email},#{collegeId},#{title})")
     void add(Teacher teacher);
 
     /**
@@ -54,7 +54,7 @@ public interface TeacherMapper {
      * 批量删除教师
      * @param ids 教师id的集合
      */
-    void deleteTeacherByIds(List<String> ids);
+    void deleteTeacherByIds(List<Integer> ids);
 
     /**
      * 根据教师工号id批量删除教师

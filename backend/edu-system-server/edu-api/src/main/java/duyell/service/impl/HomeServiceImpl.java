@@ -24,6 +24,7 @@ public class HomeServiceImpl implements HomeService {
         Map<String, Object> map = new HashMap<>(2);
         map.put("totalStudents", sysUserMapper.countStudent());
         map.put("totalTeachers", sysUserMapper.countTeacher());
+        map.put("totalCourses", sysUserMapper.countCourse());
         return map;
     }
 }

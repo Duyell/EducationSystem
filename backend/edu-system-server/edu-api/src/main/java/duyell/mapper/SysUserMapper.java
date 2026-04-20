@@ -68,9 +68,15 @@ public interface SysUserMapper {
 
     /**
      * 批量删除用户
-     * @param ids 用户id的集合
+     * @param ids 用户学号工号的集合
      */
-    void deleteByIds(List<String> ids);
+    void deleteByIds(List<Integer> ids);
+
+    /**
+     * 批量删除用户
+     * @param usernames 用户学号工号的集合
+     */
+    void deleteByUsernames(List<String> usernames);
 
     /**
      * 更新用户
@@ -84,4 +90,11 @@ public interface SysUserMapper {
      */
     @Select("select count(*) from sys_user")
     int countSysUser();
+
+    /**
+     * 统计课程数量
+     * @return 课程数量
+     */
+    @Select("select count(DISTINCT course_name) from course")
+    int countCourse();
 }
