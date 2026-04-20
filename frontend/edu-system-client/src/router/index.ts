@@ -11,11 +11,15 @@ const routes = [
     component: () => import('../views/Login.vue')
   },
   {
-    path: '/index',  // 必须全小写！
+    path: '/index',  
     name: 'Index',
     component: () => import('../views/Index.vue'),
-    meta: { requireAuth: true } // 需要登录才能访问
-  }
+    meta: { requireAuth: true } ,   
+    
+  },
+  { path: '/user', component: () => import('../views/user/index.vue') },
+  { path: '/teacher', component: () => import('../views/teacher/index.vue') },
+  { path: '/student', component: () => import('../views/student/index.vue') },
 ]
 
 const router = createRouter({

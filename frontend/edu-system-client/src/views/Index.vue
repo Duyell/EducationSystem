@@ -91,6 +91,7 @@
           </el-col>
         </el-row>
       </div>
+      <router-view/>
     </el-main>
   </div>
 </template>
@@ -130,7 +131,7 @@ const commonMenuList = [
   { name: '教评', path: '/evaluate' }
 ]
 
-// 根据角色动态计算当前应显示的菜单（核心修改）
+// 根据角色动态计算当前应显示的菜单
 const menuList = computed(() => {
   if (userRole.value === 'admin') {
     return adminMenuList
@@ -145,10 +146,10 @@ const activeMenu = ref('/index')
 // 欢迎标题（按角色显示）
 const welcomeTitle = computed(() => {
   switch (userRole.value) {
-    case 'admin': return 'HI，欢迎进入管理后台'
-    case 'teacher': return 'HI，欢迎进入您的教学空间'
-    case 'student': return 'HI，欢迎进入学习空间'
-    default: return 'HI，欢迎使用教务系统'
+    case 'admin': return 'HI,欢迎进入管理后台'
+    case 'teacher': return 'HI,欢迎进入您的教学空间'
+    case 'student': return 'HI,欢迎进入学习空间'
+    default: return 'HI,欢迎使用教务系统'
   }
 })
 
@@ -182,10 +183,10 @@ onMounted(() => {
 
   // 2. 获取首页统计数据
   axios.get('/api/home/statistics').then(res => {
-    studentTotal.value = res.data.totalStudents
-    teacherTotal.value = res.data.totalTeachers
-    courseTotal.value = res.data.totalCourses
-    classTotal.value = res.data.totalClasses
+    studentTotal.value = res.totalStudents
+    teacherTotal.value = res.totalTeachers
+    courseTotal.value = res.totalCourses
+    classTotal.value = res.totalClasses
   })
 })
 
