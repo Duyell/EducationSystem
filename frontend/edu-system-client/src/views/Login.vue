@@ -79,7 +79,7 @@ const handleLogin = async () => {
     sessionStorage.setItem('user', JSON.stringify(loginInfo))
     ElMessage.success('登录成功')
 
-    router.push('/Index')
+    router.push('/index')
   } catch (err: any) {
     ElMessage.error('登录失败：' + (err.response?.data || '用户名或密码错误'))
   } finally {

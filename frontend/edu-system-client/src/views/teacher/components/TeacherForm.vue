@@ -97,8 +97,8 @@ const rules = ref({
 // 学院列表
 const collegeList = ref([] as College[])
 const getCollegeList = async () => {
-  const res = await axios.get('/api/college/list')
-  collegeList.value = res.data
+  const res = await axios.get('/api/college')
+  collegeList.value = res.data.list
 }
 
 // 赋值（编辑时用）
@@ -131,11 +131,15 @@ const submit = async () => {
   }
   ElMessage.success('保存成功')
   emit('success')
+  emit('close')
   close()
 }
 
+
+
 const close = () => {
   formRef.value?.clearValidate()
+  emit('close')
 }
 
 onMounted(() => {
