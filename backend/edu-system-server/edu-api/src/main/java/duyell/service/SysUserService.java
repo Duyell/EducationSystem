@@ -11,9 +11,13 @@ import java.util.List;
 public interface SysUserService {
     /**
      * 获取用户列表
+     * @param pageNum 页码
+     * @param pageSize 页大小
+     * @param role 角色
+     * @param username 用户名
      * @return 用户列表
      */
-    public PageResult<SysUser> page(Integer pageNum, Integer pageSize);
+    public PageResult<SysUser> page(Integer pageNum, Integer pageSize, String role, String username);
 
     /**
      * 添加用户
@@ -23,13 +27,20 @@ public interface SysUserService {
 
     /**
      * 删除用户
-     * @param username 用户名(工号或者学号)
+     * @param id 用户id
      */
-    void delete(String username);
+    void delete(Integer id);
 
     /**
      * 修改用户
      * @param sysUser 用户
      */
     void update(SysUser sysUser);
+
+    /**
+     * 修改用户状态
+     * @param id 用户id
+     * @param status 状态
+     */
+    void updateStatus(Integer id, Integer status);
 }

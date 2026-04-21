@@ -21,10 +21,11 @@ public class HomeServiceImpl implements HomeService {
 
     @Override
     public Map<String, Object> getStatistics() {
-        Map<String, Object> map = new HashMap<>(2);
+        Map<String, Object> map = new HashMap<>(4);
         map.put("totalStudents", sysUserMapper.countStudent());
         map.put("totalTeachers", sysUserMapper.countTeacher());
         map.put("totalCourses", sysUserMapper.countCourse());
+        map.put("totalClasses", sysUserMapper.countClazz());
         return map;
     }
 }

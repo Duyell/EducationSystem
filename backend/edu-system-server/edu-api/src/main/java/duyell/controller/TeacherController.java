@@ -1,11 +1,15 @@
 package duyell.controller;
 
+import com.duyell.College;
 import com.duyell.Teacher;
 import duyell.service.TeacherService;
+import duyell.service.impl.CollegeServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import utils.PageResult;
 import utils.Result;
+
+import java.util.List;
 
 /**
  * @author duyell
@@ -15,11 +19,24 @@ import utils.Result;
 @RequestMapping("/teacher")
 public class TeacherController {
     private final TeacherService teacherService;
+    private final CollegeServiceImpl collegeServiceImpl;
 
     @GetMapping
-    public Result<PageResult<Teacher>> page(@RequestParam(defaultValue = "1") Integer pageNum,
-                                    @RequestParam(defaultValue = "10") Integer pageSize) {
-        PageResult<Teacher> pageResult = teacherService.page(pageNum, pageSize);
+    public Result<PageResult<Teacher>> page(
+                                    @RequestParam(defaultValue = "1") Integer pageNum,
+                                    @RequestParam(defaultValue = "10") Integer pageSize,
+                                    @RequestParam(required = false) String teacherName,
+                                    @RequestParam(required = false) String teacherId,
+                                    @RequestParam(required = false) Integer collegeId,
+                                    @RequestParam(required = false) String title) {
+        PageResult<Teacher> pageResult = teacherService.page(pageNum, pageSize, teacherName, teacherId,collegeId,title);
+        List<Teacher> list = pageResult.getList();
+        for(Teacher teacher:list){
+            College college = collegeServiceImpl.selectById(teacher.getCollegeId());
+            if(college != null){
+                teacher.setCollegeName(college.getCollegeName());
+            }
+        }
         return Result.success(pageResult);
     }
 
@@ -29,9 +46,9 @@ public class TeacherController {
         return Result.success("添加成功");
     }
 
-    @DeleteMapping
-    public Result<String> delete(@RequestParam Integer teacherId) {
-        teacherService.delete(teacherId);
+    @DeleteMapping("/{id}")
+    public Result<String> delete(@PathVariable Integer id) {
+        teacherService.delete(id);
         return Result.success("删除成功");
     }
 

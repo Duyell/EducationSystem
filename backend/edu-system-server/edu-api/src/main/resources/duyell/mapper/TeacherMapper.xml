@@ -46,4 +46,21 @@
             #{id}
         </foreach>
     </delete>
+    <select id="list" resultType="com.duyell.Teacher">
+        select * from teacher
+        <where>
+            <if test="teacherName != null and teacherName != ''">
+                and teacher_name like concat('%',#{teacherName},'%')
+            </if>
+            <if test="teacherId != null and teacherId != ''">
+                and teacher_id like concat('%',#{teacherId},'%')
+            </if>
+            <if test="collegeId != null">
+                and college_id = #{collegeId}
+            </if>
+            <if test="title != null and title != '' ">
+                and title = #{title}
+            </if>
+        </where>
+    </select>
 </mapper>

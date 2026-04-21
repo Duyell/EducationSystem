@@ -40,4 +40,16 @@
                 #{username}
             </foreach>
     </delete>
+    <select id="list" resultType="com.duyell.SysUser">
+        select * from sys_user
+        <where>
+            <if test="role != null and role != ''">
+                and role = #{role}
+            </if>
+            <if test="username != null and username != ''">
+                and username like CONCAT('%', #{username}, '%')
+            </if>
+        </where>
+
+    </select>
 </mapper>

@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.*;
 import utils.PageResult;
 import utils.Result;
 
+import java.util.Map;
+
 /**
  * @author duyell
  */
@@ -17,9 +19,12 @@ public class UserController {
     private final SysUserService sysUserService;
 
     @GetMapping
-    public Result<PageResult<SysUser>> page(@RequestParam(defaultValue = "1") Integer page,
-                       @RequestParam(defaultValue = "10") Integer pageSize) {
-        PageResult<SysUser> pageResult = sysUserService.page(page, pageSize);
+    public Result<PageResult<SysUser>> page(
+                        @RequestParam(defaultValue = "1") Integer page,
+                        @RequestParam(defaultValue = "10") Integer pageSize,
+                        @RequestParam(required = false) String role,
+                        @RequestParam(required = false) String username) {
+        PageResult<SysUser> pageResult = sysUserService.page(page, pageSize,role,username);
         return Result.success(pageResult);
     }
 
@@ -29,15 +34,11 @@ public class UserController {
         return Result.success("添加成功");
     }
 
-    @DeleteMapping
-    public Result<String> delete(@RequestParam String username) {
-    	try{
-            sysUserService.delete(username);
-            return Result.success("删除成功");
-        }catch (Exception e){
-            return Result.error("400", e.getMessage());
-        }
+    @DeleteMapping("/{id}")
+    public Result<String> delete(@PathVariable Integer id) {
 
+        sysUserService.delete(id);
+        return Result.success("删除成功");
     }
 
     @PutMapping
@@ -51,4 +52,16 @@ public class UserController {
             return Result.error( "500","更新失败");
         }
     }
+    /**
+     * 更新用户状态
+     */
+    @PutMapping("/status/{id}")
+    public Result<String> updateStatus(@PathVariable Integer id,
+                                        @RequestBody Map<String,Integer> payload) {
+        Integer status = payload.get("status");
+        sysUserService.updateStatus(id,status);
+        return Result.success("更新成功");
+    }
+
+
 }

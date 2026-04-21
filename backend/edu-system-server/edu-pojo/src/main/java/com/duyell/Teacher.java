@@ -27,4 +27,6 @@ public class Teacher {
     private String title;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+
+    private String collegeName;
 }

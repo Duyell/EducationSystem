@@ -32,4 +32,11 @@ public interface CollegeService {
      * @param college 学院
      */
     void update(College college);
+
+    /**
+     * 根据id查询学院
+     * @param collegeId 学院id
+     * @return 学院
+     */
+    College selectById(Integer collegeId);
 }

@@ -59,4 +59,12 @@ public interface CollegeMapper {
      * @param ids 学院id的集合
      */
     void deleteByIds(List<Integer> ids);
+
+    /**
+     * 根据学院id查询学院名称
+     * @param collegeId 学院id
+     * @return 学院名称
+     */
+    @Select("select * from college where id = #{collegeId}")
+    College selectCollegeById(Integer collegeId);
 }

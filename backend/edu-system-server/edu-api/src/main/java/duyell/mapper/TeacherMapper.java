@@ -3,6 +3,7 @@ package duyell.mapper;
 import com.duyell.Teacher;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
@@ -14,10 +15,14 @@ import java.util.List;
 public interface TeacherMapper {
     /**
      * 分页查询
+     * @param teacherName 教师名称
+     * @param teacherId  教师id
+     * @param collegeId  学院id
+     * @param title 职称
      * @return 查询列表
      */
-    @Select("select * from teacher")
-    List<Teacher> list();
+    List<Teacher> list(@Param("teacherName") String teacherName, @Param("teacherId") String teacherId
+            ,@Param("collegeId") Integer collegeId, @Param("title") String title);
 
     /**
      * 添加教师
@@ -40,7 +45,7 @@ public interface TeacherMapper {
      * @param id 用户id
      * @return 教师名称
      */
-    @Select("select teacher_name from teacher where id = #{id}")
+    @Select("select teacher_id from teacher where id = #{id}")
     String selectTeacherById(Integer id);
 
     /**

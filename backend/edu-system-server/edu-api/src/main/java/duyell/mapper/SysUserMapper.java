@@ -1,10 +1,7 @@
 package duyell.mapper;
 
 import com.duyell.SysUser;
-import org.apache.ibatis.annotations.Insert;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Options;
-import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
@@ -53,10 +50,11 @@ public interface SysUserMapper {
 
     /**
      * 分页查询
+     * @param role 角色
+     * @param username 用户名
      * @return 查询列表
      */
-    @Select("select * from sys_user")
-    public List<SysUser> list();
+    public List<SysUser> list(@Param("role") String role,@Param("username") String username);
 
     /**
      * 添加用户
@@ -97,4 +95,27 @@ public interface SysUserMapper {
      */
     @Select("select count(DISTINCT course_name) from course")
     int countCourse();
+
+    /**
+     * 设置用户状态
+     * @param id 用户id
+     * @param status 用户状态
+     */
+    @Update("update sys_user set status = #{status} where id = #{id} ")
+    void updateStatus(Integer id,Integer status);
+
+    /**
+     * 查询班级总数
+     * @return 班级总数
+     */
+    @Select("select count(*) from clazz")
+    int countClazz();
+
+    /**
+     * 根据id查询用户
+     * @param id 用户id
+     * @return 用户
+     */
+    @Select("select * from sys_user where id = #{id} ")
+    SysUser selectById(Integer id);
 }

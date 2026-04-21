@@ -42,4 +42,12 @@ public class CollegeServiceImpl implements CollegeService {
     public void update(College college) {
         collegeMapper.updateCollege(college.getId(), college.getCollegeName());
     }
+
+    @Override
+    public College selectById(Integer collegeId) {
+        return collegeMapper.selectCollegeById(collegeId);
+    }
+
+
+
 }

@@ -27,11 +27,11 @@ public class SysUserServiceImpl implements SysUserService {
     private final TeacherMapper teacherMapper;
 
     @Override
-    public PageResult<SysUser> page(Integer pageNum, Integer pageSize) {
+    public PageResult<SysUser> page(Integer pageNum, Integer pageSize, String role, String username) {
         //1.设置分页参数
         Page<SysUser> pageResult=  PageHelper.startPage(pageNum, pageSize);
         //2.查询
-        List<SysUser> list = sysUserMapper.list();
+        List<SysUser> list = sysUserMapper.list(role, username);
 
         return new PageResult<>(pageResult.getTotal(), list);
     }
@@ -56,19 +56,16 @@ public class SysUserServiceImpl implements SysUserService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public void delete(String username) {
-        SysUser sysUser = sysUserMapper.selectByUsername(username);
-        String stu = "student";
-        String tea = "teacher";
-        if(stu.equals(sysUser.getRole())){
-            studentMapper.deleteStudentByStudentIds(List.of(sysUser.getUsername()));
-        }else if (tea.equals(sysUser.getRole())) {
-            teacherMapper.deleteTeacherByTeacherIds(List.of(sysUser.getUsername()));
-        }else{
+    public void delete(Integer id) {
+        SysUser sysUser = sysUserMapper.selectById(id);
+        if (sysUser == null) {
+            throw new RuntimeException("用户不存在");
+        }
+
+        if("admin".equals(sysUser.getRole())){
             throw new RuntimeException("管理员账号不可删除");
         }
-        sysUserMapper.deleteByUsernames(List.of(username));
+        sysUserMapper.deleteByIds(List.of(id));
     }
 
     @Override
@@ -91,5 +88,10 @@ public class SysUserServiceImpl implements SysUserService {
             throw new RuntimeException("管理员账号不可修改");
         }
         sysUserMapper.update(sysUser);
+    }
+
+    @Override
+    public void updateStatus(Integer id,Integer status) {
+        sysUserMapper.updateStatus(id, status);
     }
 }
