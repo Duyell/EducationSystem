@@ -16,4 +16,8 @@ public class Clazz {
     private String clazzName;
     private Integer majorId;
     private String grade;
+
+    private String majorName;
+    private Long collegeId;
+    private String collegeName;
 }

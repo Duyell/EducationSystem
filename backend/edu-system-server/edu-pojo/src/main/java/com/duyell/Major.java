@@ -15,4 +15,6 @@ public class Major {
     private Integer id;
     private String majorName;
     private Integer collegeId;
+
+    private String collegeName;
 }

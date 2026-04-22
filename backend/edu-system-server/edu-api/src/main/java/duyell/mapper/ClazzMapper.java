@@ -45,10 +45,13 @@ public interface ClazzMapper {
 
     /**
      * 分页查询
+     * @param clazzName 班级名称
+     * @param grade 年级
+     * @param majorId 专业id
+     * @param collegeId 学院id
      * @return 查询列表
      */
-    @Select("select * from clazz")
-    List<Clazz> list();
+    List<Clazz> list(String clazzName, String grade, Integer majorId, Integer collegeId);
 
 
     /**

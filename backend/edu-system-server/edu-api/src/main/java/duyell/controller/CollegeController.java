@@ -24,8 +24,9 @@ public class CollegeController {
      */
     @GetMapping
     public Result<PageResult<College>> page(@RequestParam(defaultValue = "1") Integer pageNum,
-                                            @RequestParam(defaultValue = "10") Integer pageSize) {
-        PageResult<College> pageResult = collegeService.page(pageNum, pageSize);
+                                            @RequestParam(defaultValue = "10") Integer pageSize,
+                                            @RequestParam(required = false) String collegeName) {
+        PageResult<College> pageResult = collegeService.page(pageNum, pageSize, collegeName);
         return Result.success(pageResult);
     }
 
@@ -35,9 +36,9 @@ public class CollegeController {
         return Result.success("添加成功");
     }
 
-    @DeleteMapping
-    public Result<String> delete(@RequestParam Integer collegeId) {
-        collegeService.delete(collegeId);
+    @DeleteMapping("/{id}")
+    public Result<String> delete(@PathVariable Integer id) {
+        collegeService.delete(id);
         return Result.success("删除成功");
     }
 

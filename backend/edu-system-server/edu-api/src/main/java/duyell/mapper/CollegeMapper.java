@@ -42,10 +42,10 @@ public interface CollegeMapper {
 
     /**
      * 分页查询
+     * @param collegeName 学院名称
      * @return 查询列表
      */
-    @Select("select * from college")
-    List<College> list();
+    List<College> list(String collegeName);
 
     /**
      * 统计学院数量

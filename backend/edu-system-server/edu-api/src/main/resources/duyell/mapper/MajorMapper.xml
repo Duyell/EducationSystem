@@ -16,7 +16,8 @@
         where id = #{id}
     </update>
     <select id="list" resultType="com.duyell.Major">
-        select * from major
+        select m.*, c.college_name from major m
+        left join college c on m.college_id = c.id
         <where>
             <if test="majorName != null and majorName != ''">
                 major_name like concat('%',#{majorName},'%')

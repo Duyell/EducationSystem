@@ -18,4 +18,26 @@
         </set>
         where id = #{id}
     </update>
+    <delete id="deleteByIds">
+        delete from score where id in
+        <foreach collection="ids" item="id" separator="," open="(" close=")">
+            #{id}
+        </foreach>
+    </delete>
+    <select id="list" resultType="com.duyell.Score">
+        select s.*, c.course_name as courseName,stu.student_name as studentName, c.term as term from score s
+        left join course c on s.course_id = c.id
+        left join student stu on s.student_id = stu.student_id
+        <where>
+            <if test="courseId != null">
+                and s.course_id = #{courseId}
+            </if>
+            <if test="studentId != null">
+                and s.student_id = #{studentId}
+            </if>
+            <if test="term != null">
+                and c.term like concat('%',#{term},'%')
+            </if>
+        </where>
+    </select>
 </mapper>

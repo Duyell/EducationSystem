@@ -19,11 +19,11 @@ import java.util.List;
 public class ClazzServiceImpl implements ClazzService {
     private final ClazzMapper clazzMapper;
     @Override
-    public PageResult<Clazz> page(Integer pageNum, Integer pageSize) {
+    public PageResult<Clazz> page(Integer pageNum, Integer pageSize, String clazzName, String grade, Integer majorId, Integer collegeId) {
         //1.设置分页参数
         Page<Clazz> pageResult=  PageHelper.startPage(pageNum, pageSize);
         //2.查询数据
-        List<Clazz> clazzList = clazzMapper.list();
+        List<Clazz> clazzList = clazzMapper.list(clazzName, grade, majorId, collegeId);
         return new PageResult<>(pageResult.getTotal(), clazzList);
     }
 

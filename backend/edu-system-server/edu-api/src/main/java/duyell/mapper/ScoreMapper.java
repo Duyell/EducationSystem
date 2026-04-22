@@ -1,10 +1,7 @@
 package duyell.mapper;
 
 import com.duyell.Score;
-import org.apache.ibatis.annotations.Delete;
-import org.apache.ibatis.annotations.Insert;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
@@ -29,6 +26,12 @@ public interface ScoreMapper {
     void delete(Integer courseId, Integer studentId);
 
     /**
+     * 批量删除成绩
+     * @param courseIds 课程id的集合
+     */
+    void deleteByIds(List<Integer> courseIds);
+
+    /**
      * 更新成绩
      * @param score 成绩
      */
@@ -45,10 +48,12 @@ public interface ScoreMapper {
 
     /**
      * 分页查询
+     * @param courseId 课程id
+     * @param studentId 学生id
+     * @param term 学期
      * @return 查询列表
      */
-    @Select("select * from score")
-    List<Score> list();
+    List<Score> list(@Param("courseId") Integer courseId, @Param("studentId") Integer studentId,@Param("term") String term);
 
     /**
      * 根据学生id查询成绩

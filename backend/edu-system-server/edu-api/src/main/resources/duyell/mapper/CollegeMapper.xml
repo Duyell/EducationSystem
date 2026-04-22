@@ -9,4 +9,12 @@
             #{id}
         </foreach>
     </delete>
+    <select id="list" resultType="com.duyell.College">
+        select * from college
+        <where>
+            <if test="collegeName != null">
+                and college_name like concat('%',#{collegeName},'%')
+            </if>
+        </where>
+    </select>
 </mapper>

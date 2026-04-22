@@ -18,8 +18,12 @@ public class ClazzController {
 
     @GetMapping
     public Result<PageResult<Clazz>> page(@RequestParam(defaultValue = "1") Integer page,
-                                          @RequestParam(defaultValue = "10") Integer pageSize) {
-        PageResult<Clazz> pageResult = clazzService.page(page, pageSize);
+                                          @RequestParam(defaultValue = "10") Integer pageSize,
+                                          @RequestParam(required = false) String clazzName,
+                                          @RequestParam(required = false) String grade,
+                                          @RequestParam(required = false) Integer majorId,
+                                          @RequestParam(required = false) Integer collegeId) {
+        PageResult<Clazz> pageResult = clazzService.page(page, pageSize, clazzName, grade, majorId, collegeId);
         return Result.success(pageResult);
     }
 
@@ -29,9 +33,9 @@ public class ClazzController {
         return Result.success("添加成功");
     }
 
-    @DeleteMapping
-    public Result<String> delete(@RequestParam Integer clazzId) {
-        clazzService.delete(clazzId);
+    @DeleteMapping("/{id}")
+    public Result<String> delete(@PathVariable Integer id) {
+        clazzService.delete(id);
         return Result.success("删除成功");
     }
 

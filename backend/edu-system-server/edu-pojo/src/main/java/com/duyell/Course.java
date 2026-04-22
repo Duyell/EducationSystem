@@ -22,4 +22,7 @@ public class Course {
     private BigDecimal credit;
     private Integer classHour;
     private Integer maxStudent;
+
+    private String teacherName;
+    private String collegeName;
 }

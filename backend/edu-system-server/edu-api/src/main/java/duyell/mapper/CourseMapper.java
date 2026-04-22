@@ -1,10 +1,7 @@
 package duyell.mapper;
 
 import com.duyell.Course;
-import org.apache.ibatis.annotations.Delete;
-import org.apache.ibatis.annotations.Insert;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
@@ -50,10 +47,16 @@ public interface CourseMapper {
 
     /**
      * 分页查询
+     * @param courseName 课程名称
+     * @param teacherName 教师名称
+     * @param teacherId 教师id
+     * @param collegeId 学院id
+     * @param credit 学分
+     * @param classHour 课时
+     * @param maxStudent 最大人数
      * @return 课程列表
      */
-    @Select("select * from course")
-    List<Course> list();
+    List<Course> list(@Param("courseName") String courseName,@Param("teacherName") String teacherName, @Param("teacherId") String teacherId, @Param("collegeId") Integer collegeId, @Param("credit") Integer credit, @Param("classHour") Integer classHour, @Param("maxStudent") Integer maxStudent);
 
     /**
      * 统计课程数量

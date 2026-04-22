@@ -20,11 +20,11 @@ public class CollegeServiceImpl implements CollegeService {
     private final CollegeMapper collegeMapper;
 
     @Override
-    public PageResult<College> page(Integer pageNum, Integer pageSize) {
+    public PageResult<College> page(Integer pageNum, Integer pageSize, String collegeName) {
         //1.设置分页参数
         Page<College> pageResult=  PageHelper.startPage(pageNum, pageSize);
         //2.查询数据
-        List<College> collegeList = collegeMapper.list();
+        List<College> collegeList = collegeMapper.list(collegeName);
         return new PageResult<>(pageResult.getTotal(), collegeList);
     }
 

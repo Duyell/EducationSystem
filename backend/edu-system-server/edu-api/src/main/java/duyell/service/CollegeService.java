@@ -11,9 +11,10 @@ public interface CollegeService {
      * 获取学院列表
      * @param pageNum 页码
      * @param pageSize 每页大小
+     * @param collegeName 学院名称
      * @return 学院列表
      */
-    PageResult<College> page(Integer pageNum, Integer pageSize);
+    PageResult<College> page(Integer pageNum, Integer pageSize, String collegeName);
 
     /**
      * 添加学院
