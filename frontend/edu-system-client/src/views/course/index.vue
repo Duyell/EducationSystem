@@ -2,11 +2,14 @@
     <div class="crud-container">
       <div class="search-box">
         <el-form inline :model="query">
-          <el-form-item label="姓名">
+          <el-form-item label="课程名">
+            <el-input v-model="query.courseName" placeholder="课程名称" />
+          </el-form-item>
+          <el-form-item label="授课教师">
             <el-input v-model="query.teacherName" placeholder="教师姓名" />
           </el-form-item>
-          <el-form-item label="工号">
-            <el-input v-model="query.teacherId" placeholder="工号" />
+          <el-form-item label="授课教师">
+            <el-input v-model="query.teacherId" placeholder="教师工号" />
           </el-form-item>
           <el-form-item label="所属学院">
             <el-select v-model="query.collegeId" placeholder="请选择学院" clearable style="width: 160px" value-key="id">
@@ -18,13 +21,14 @@
               />
             </el-select>
           </el-form-item>
-          <el-form-item label="职称">
-            <el-select v-model="query.title" placeholder="请选择职称" clearable style="width: 140px">
-              <el-option label="讲师" value="讲师" />
-              <el-option label="副教授" value="副教授" />
-              <el-option label="教授" value="教授" />
-              <el-option label="助教" value="助教" />
-            </el-select>
+          <el-form-item label="课程学分">
+            <el-input v-model="query.credit" placeholder="学分" />
+          </el-form-item>
+          <el-form-item label="课程课时">
+            <el-input v-model="query.classHour" placeholder="课时" />
+          </el-form-item>
+          <el-form-item label="授课人数">
+            <el-input v-model="query.maxStudent" placeholder="最大人数" />
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="getList">搜索</el-button>
@@ -35,15 +39,14 @@
       </div>
 
       <el-table :data="list" border class="crud-table" stripe>
-        <el-table-column prop="teacherName" label="姓名" width="90" />
-        <el-table-column prop="teacherId" label="工号" width="110" />
-        <el-table-column prop="gender" label="性别" width="70" />
-        <el-table-column prop="birthday" label="生日" width="120" />
-        <el-table-column prop="phone" label="联系电话" width="130" />
-        <el-table-column prop="email" label="邮箱" min-width="180" />
-        <el-table-column prop="collegeName" label="所属学院" min-width="150" />
-        <el-table-column prop="title" label="职称" width="100" />
-        
+        <el-table-column prop="courseName" label="课程名" width="180" />
+        <el-table-column prop="teacherName" label="授课教师姓名" width="120" />
+        <el-table-column prop="teacherId" label="授课教师工号" width="120" />
+        <el-table-column prop="collegeName" label="开课学院" min-width="150" />
+        <el-table-column prop="term" label="学期" width="120" />
+        <el-table-column prop="credit" label="学分" width="80" />
+        <el-table-column prop="classHour" label="课时" width="80" />
+        <el-table-column prop="maxStudent" label="最大人数" width="100" />
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" @click="handleEdit(row)">编辑</el-button>
@@ -61,17 +64,17 @@
         class="page-box"
       />
 
-      <el-dialog v-model="dialogVisible" title="教师信息" width="650px">
-        <teacher-form ref="formRef" @success="getList" @close="dialogVisible = false" />
+      <el-dialog v-model="dialogVisible" title="课程信息" width="650px">
+        <course-form ref="formRef" @success="getList" @close="dialogVisible = false" />
       </el-dialog>
     </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted ,nextTick} from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage, ElMessageBox, ElTableColumn } from 'element-plus'
 import axios from '@/utils/request'
-import TeacherForm from './components/TeacherForm.vue'
+import CourseForm from './components/CourseForm.vue'
 
 const pageNum = ref(1)
 const pageSize = ref(10)
@@ -81,42 +84,40 @@ const list = ref([])
 const dialogVisible = ref(false)
 const formRef = ref()
 
-// 搜索条件
 const query = reactive({
-  teacherName: '',
+  courseName: '',
   teacherId: '',
   collegeId: null,
-  title: ''
+  term: ''
 })
 
-// 学院下拉数据
 const collegeList = ref([])
 
-// 获取学院列表
 const getCollegeList = async () => {
   try {
     const res = await axios.get('/api/college')
     collegeList.value = res.data.list
   } catch (err) {
-    console.error('加载学院下拉失败：', err)
+    console.error('加载学院失败')
   }
 }
 
-// 教师列表
 const getList = async () => {
-  const res = await axios.get('/api/teacher', {
+  const res = await axios.get('/api/course', {
     params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value }
   })
   list.value = res.data.list
   total.value = res.data.total
 }
 
-// 重置搜索
 const resetQuery = () => {
-  query.teacherName = ''
+  query.courseName = ''
   query.teacherId = ''
   query.collegeId = null
-  query.title = ''
+  query.term = ''
+  query.credit = null
+  query.classHour = null
+  query.maxStudent = null
   getList()
 }
 
@@ -127,20 +128,16 @@ const handleAdd = () => {
 
 const handleEdit = (row) => {
   dialogVisible.value = true
-  nextTick(() => {
-    formRef.value?.setData(row)
-  })
-  
+  formRef.value?.setData(row)
 }
 
 const handleDelete = async (id) => {
-  await ElMessageBox.confirm('确定删除该教师信息？')
-  await axios.delete(`/api/teacher/${id}`)
+  await ElMessageBox.confirm('确定删除该课程？')
+  await axios.delete(`/api/course/${id}`)
   ElMessage.success('删除成功')
   getList()
 }
 
-// 页面初始化
 onMounted(() => {
   getCollegeList()
   getList()

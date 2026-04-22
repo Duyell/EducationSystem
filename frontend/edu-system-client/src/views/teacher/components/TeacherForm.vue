@@ -66,7 +66,7 @@ interface Teacher {
   gender: string
   phone: string
   email: string
-  birthday: string | Date | null
+  birthday: Date | null
   collegeId: number | string
   title: string
 }
@@ -75,14 +75,14 @@ const emit = defineEmits(['success'])
 const formRef = ref()
 
 // 表单数据
-const form = ref({
+const form = ref<Teacher>({
   id: 0,
   teacherName: '',
   teacherId: '',
   gender: '男',
   phone: '',
   email: '',
-  birthday: '',
+  birthday: null,
   collegeId: '',
   title: ''
 })
@@ -102,7 +102,7 @@ const getCollegeList = async () => {
 }
 
 // 赋值（编辑时用）
-const setData = (row: { id: number; teacherName: string; teacherId: string; gender: string; phone: string; email: string; birthday: string; collegeId: string; title: string } | { id: number; teacherName: string; teacherId: string; gender: string; phone: string; email: string; birthday: string; collegeId: string; title: string }) => {
+const setData = (row: { id: number; teacherName: string; teacherId: string; gender: string; phone: string; email: string; birthday: Date | null; collegeId: string; title: string } | { id: number; teacherName: string; teacherId: string; gender: string; phone: string; email: string; birthday: Date|null; collegeId: string; title: string }) => {
   form.value = { ...row }
 }
 
@@ -115,7 +115,7 @@ const reset = () => {
     gender: '男',
     phone: '',
     email: '',
-    birthday: '',
+    birthday: null,
     collegeId: '',
     title: ''
   }

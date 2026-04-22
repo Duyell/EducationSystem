@@ -60,15 +60,26 @@ interface Clazz {
   grade: number
 }
 
+interface Student {
+  id: number
+  studentName: string
+  studentId: string
+  gender: string
+  phone: string
+  email: string
+  birthday: Date | null
+  clazzId: string
+}
+
 // 表单数据
-const form = ref({
+const form = ref<Student>({
   id: 0,
   studentName: '',
   studentId: '',
   gender: '男',
   phone: '',
   email: '',
-  birthday: '',
+  birthday: null,
   clazzId: ''
 })
 
@@ -87,7 +98,7 @@ const getClazzList = async () => {
 }
 
 // 赋值（编辑）
-const setData = (row: { id: number; studentName: string; studentId: string; gender: string; phone: string; email: string; birthday: string; clazzId: string } | { id: number; studentName: string; studentId: string; gender: string; phone: string; email: string; birthday: string; clazzId: string }) => {
+const setData = (row: { id: number; studentName: string; studentId: string; gender: string; phone: string; email: string; birthday: Date | null; clazzId: string } | { id: number; studentName: string; studentId: string; gender: string; phone: string; email: string; birthday: Date|null; clazzId: string }) => {
   form.value = { ...row }
 }   
 
@@ -100,7 +111,7 @@ const reset = () => {
     gender: '男',
     phone: '',
     email: '',
-    birthday: '',
+    birthday: null,
     clazzId: ''
   }
 }

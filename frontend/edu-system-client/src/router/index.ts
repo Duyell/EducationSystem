@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Layout from '@/components/Layout.vue'
+import path from 'path'
 
 const routes = [
   {
@@ -32,7 +33,26 @@ const routes = [
         path: 'student',
         component: () => import('../views/student/index.vue')
       },
-      
+      {
+        path: 'course',
+        component: () => import('../views/course/index.vue')
+      },
+      {
+        path: 'score',
+        component: () => import('../views/score/index.vue')
+      },
+      {
+        path: 'clazz',
+        component: () => import('../views/clazz/index.vue')
+      },
+      {
+        path: 'college',
+        component: () => import('../views/college/index.vue')
+      },
+      {
+        path: 'major',
+        component: () => import('../views/major/index.vue')
+      }
     ]
   }
 ]

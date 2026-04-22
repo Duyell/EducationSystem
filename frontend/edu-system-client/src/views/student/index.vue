@@ -87,7 +87,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted,nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from '@/utils/request'
 import StudentForm from './components/StudentForm.vue'
@@ -170,7 +170,9 @@ const handleAdd = () => {
 
 const handleEdit = (row) => {
   dialogVisible.value = true
-  formRef.value?.setData(row)
+  nextTick(() => {
+    formRef.value?.setData(row)
+  })
 }
 
 const handleDelete = async (id) => {
