@@ -42,4 +42,44 @@
                 #{id}
             </foreach>
     </delete>
+    <resultMap id="StudentMap" type="com.duyell.Student">
+        <id property="id" column="id"/>
+        <result property="studentName" column="student_name"/>
+        <result property="studentId" column="student_id"/>
+        <result property="clazzId" column="clazz_id"/>
+        <result property="gender" column="gender"/>
+        <result property="birthday" column="birthday"/>
+        <result property="phone" column="phone"/>
+        <result property="email" column="email"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="userId" column="user_id"/>
+        <result property="clazzName" column="clazz_name"/>
+        <result property="majorName" column="major_name"/>
+        <result property="collegeName" column="college_name"/>
+    </resultMap>
+    <select id="list" resultType="com.duyell.Student">
+        select s.*, c.clazz_name, m.major_name, col.college_name
+        from student s
+        left join clazz c on s.clazz_id = c.id
+        left join major m on c.major_id = m.id
+        left join college col on m.college_id = col.id
+        <where>
+            <if test="studentName != null and studentName != ''">
+                and s.student_name like concat('%',#{studentName},'%')
+            </if>
+            <if test="studentId != null and studentId != ''">
+                and s.student_id like concat('%',#{studentId},'%')
+            </if>
+            <if test="clazzId != null">
+                and s.clazz_id = #{clazzId}
+            </if>
+            <if test="collegeId != null">
+                and m.college_id = #{collegeId}
+            </if>
+            <if test="majorId != null">
+                and m.id = #{majorId}
+            </if>
+        </where>
+    </select>
 </mapper>

@@ -13,8 +13,11 @@ public interface StudentMapper {
      * 分页查询
      * @return 查询列表
      */
-    @Select("select * from student")
-    List<Student> list();
+    List<Student> list(@Param("studentName") String studentName,
+                       @Param("studentId") String studentId,
+                       @Param("collegeId") Integer collegeId,
+                       @Param("majorId") Integer majorId,
+                       @Param("clazzId") Integer clazzId);
 
     /**
      * 添加学生
@@ -33,12 +36,12 @@ public interface StudentMapper {
     Student selectStudentByStudentId(String studentId);
 
     /**
-     * 根据用户id查找学生名称
+     * 根据用户id查找学生学号
      * @param id 用户id
-     * @return 学生对象
+     * @return 学生学号
      */
-    @Select("select * from student where id = #{id}")
-    Student selectStudentById(Integer id);
+    @Select("select student_id from student where id = #{id}")
+    String selectStudentById(Integer id);
 
     /**
      * 统计学生数量

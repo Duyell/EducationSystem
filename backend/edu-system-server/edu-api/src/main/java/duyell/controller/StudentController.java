@@ -17,10 +17,16 @@ public class StudentController {
     private final StudentService studentService;
 
     @GetMapping
-    public Result<PageResult<Student>> page(@RequestParam(defaultValue = "1") Integer pageNum,
-                                    @RequestParam(defaultValue = "10") Integer pageSize) {
+    public Result<PageResult<Student>> page(
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "10") Integer pageSize,
+            @RequestParam(required = false) String studentName,
+            @RequestParam(required = false) String studentId,
+            @RequestParam(required = false) Integer collegeId,
+            @RequestParam(required = false) Integer majorId,
+            @RequestParam(required = false) Integer clazzId) {
         PageResult<Student> pageResult;
-        pageResult = studentService.page(pageNum, pageSize);
+        pageResult = studentService.page(pageNum, pageSize, studentName, studentId, collegeId, majorId, clazzId);
         return Result.success(pageResult);
     }
 
@@ -30,9 +36,9 @@ public class StudentController {
         return Result.success("添加成功");
     }
 
-    @DeleteMapping
-    public Result<String> delete(@RequestParam Integer studentId) {
-        studentService.delete(studentId);
+    @DeleteMapping("/{id}")
+    public Result<String> delete(@PathVariable Integer id) {
+        studentService.delete(id);
         return Result.success("删除成功");
     }
 

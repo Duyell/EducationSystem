@@ -15,4 +15,15 @@
         </set>
         where id = #{id}
     </update>
+    <select id="list" resultType="com.duyell.Major">
+        select * from major
+        <where>
+            <if test="majorName != null and majorName != ''">
+                major_name like concat('%',#{majorName},'%')
+            </if>
+            <if test="collegeId != null ">
+                and college_id = #{collegeId}
+            </if>
+        </where>
+    </select>
 </mapper>

@@ -1,10 +1,7 @@
 package duyell.mapper;
 
 import com.duyell.Major;
-import org.apache.ibatis.annotations.Delete;
-import org.apache.ibatis.annotations.Insert;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
@@ -43,10 +40,11 @@ public interface MajorMapper {
 
     /**
      * 分页查询
+     * @param majorName 专业名称
+     * @param collegeId 学院id
      * @return 查询列表
      */
-    @Select("select * from major")
-    List<Major> list();
+    List<Major> list(@Param("majorName") String majorName,@Param("collegeId") Integer collegeId);
 
     /**
      * 统计专业数量

@@ -26,4 +26,7 @@ public class Student {
     private String email;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+    private String clazzName;
+    private String collegeName;
+    private String majorName;
 }
