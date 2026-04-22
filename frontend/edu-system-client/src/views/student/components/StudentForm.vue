@@ -82,8 +82,8 @@ const rules = ref({
 // 班级列表
 const clazzList = ref<Clazz[]>([])
 const getClazzList = async () => {
-  const res = await axios.get('/api/clazz/list')
-  clazzList.value = res.data
+  const res = await axios.get('/api/clazz')
+  clazzList.value = res.data.list
 }
 
 // 赋值（编辑）
@@ -115,11 +115,13 @@ const submit = async () => {
   }
   ElMessage.success('保存成功')
   emit('success')
+  emit('close')
   close()
 }
 
 const close = () => {
   formRef.value?.clearValidate()
+  emit('close')
 }
 
 onMounted(() => {
