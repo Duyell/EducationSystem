@@ -2,6 +2,7 @@ package duyell.service;
 
 import com.duyell.Teacher;
 import utils.PageResult;
+import java.util.List;
 
 /**
  * @author duyell
@@ -36,4 +37,10 @@ public interface TeacherService {
      * @param teacher 教师
      */
     void update(Teacher teacher);
+
+    /**
+     * 获取所有教师列表
+     * @return 教师列表
+     */
+    List<Teacher> list();
 }

@@ -26,6 +26,13 @@ service.interceptors.response.use(
     return response.data
   },
   error => {
+    // 如果是 401（未登录/ token 过期），跳转到登录页
+    if (error.response?.status === 401) {
+      sessionStorage.removeItem('token')
+      sessionStorage.removeItem('user')
+      window.location.href = '/login'
+      return Promise.reject(error)
+    }
     // 网络错误或 HTTP 状态码非 2xx 时触发
     console.error('请求错误:', error)
     // 可以在这里统一弹出提示，例如：

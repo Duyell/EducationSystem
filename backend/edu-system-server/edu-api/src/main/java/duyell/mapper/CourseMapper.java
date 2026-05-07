@@ -30,12 +30,18 @@ public interface CourseMapper {
     void update(Course course);
 
     /**
-     * 查询课程名称
+     * 查询课程
      * @param id 课程id
-     * @return 课程名称
+     * @return 课程
      */
-    @Select("select * from course where id = #{id}")
-    String selectCourseById(Integer id);
+    Course selectCourseById(Integer id);
+
+    /**
+     * 根据教师ID查询课程
+     * @param teacherId 教师工号
+     * @return 课程列表
+     */
+    List<Course> selectByTeacherId(String teacherId);
 
     /**
      * 查询课程

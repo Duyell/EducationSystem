@@ -52,6 +52,10 @@ const routes = [
       {
         path: 'major',
         component: () => import('../views/major/index.vue')
+      },
+      {
+        path: 'evaluate',
+        component: () => import('../views/evaluate/index.vue')
       }
     ]
   }

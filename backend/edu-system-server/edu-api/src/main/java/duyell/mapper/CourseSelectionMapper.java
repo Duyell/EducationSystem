@@ -19,7 +19,7 @@ public interface CourseSelectionMapper {
      * @param studentId 学生id
      */
     @Insert("insert into course_selection(course_id, student_id) values(#{courseId},#{studentId})")
-    void add(Integer courseId, Integer studentId);
+    void add(Integer courseId, String studentId);
 
     /**
      * 删除选课信息
@@ -27,7 +27,7 @@ public interface CourseSelectionMapper {
      * @param studentId 学生id
      */
     @Delete("delete from course_selection where course_id = #{courseId} and student_id = #{studentId}")
-    void delete(Integer courseId, Integer studentId);
+    void delete(Integer courseId, String studentId);
 
     /**
      * 删除选课信息
@@ -41,7 +41,7 @@ public interface CourseSelectionMapper {
      * @param studentId 学生id
      */
     @Delete("delete from course_selection where student_id = #{studentId}")
-    void deleteByStudentId(Integer studentId);
+    void deleteByStudentId(String studentId);
 
     /**
      * 查询选课信息
@@ -57,7 +57,7 @@ public interface CourseSelectionMapper {
      * @return 选课信息列表
      */
     @Select("select * from course_selection where student_id = #{studentId}")
-    List<CourseSelection> selectByStudentId(Integer studentId);
+    List<CourseSelection> selectByStudentId(String studentId);
 
     /**
      * 统计选课数量

@@ -18,8 +18,8 @@ import java.util.Map;
 public class JwtUtil {
 
     private static final String SECRET_KEY = "edu_system_secret_key_1234567890_abcdefg";
-    /** 过期时间：5分钟（单位：毫秒）*/
-    private static final long EXPIRATION = 5 * 60 * 1000L;
+    /** 过期时间：30分钟（单位：毫秒）*/
+    private static final long EXPIRATION = 30 * 60 * 1000L;
 
     /**
      * 生成Token

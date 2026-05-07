@@ -72,4 +72,11 @@ public interface TeacherMapper {
      * @param teacher 教师
      */
     void updateTeacher(Teacher teacher);
+
+    /**
+     * 查询所有教师
+     * @return 教师列表
+     */
+    @Select("select * from teacher")
+    List<Teacher> listAll();
 }

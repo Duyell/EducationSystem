@@ -1,7 +1,9 @@
 package duyell.service;
 
 import com.duyell.Course;
+import com.duyell.Student;
 import utils.PageResult;
+import java.util.List;
 
 /**
  * @author duyell
@@ -39,4 +41,18 @@ public interface CourseService {
      * @param course 课程
      */
     void update(Course course);
+
+    /**
+     * 根据教师ID查询课程
+     * @param teacherId 教师工号
+     * @return 课程列表
+     */
+    List<Course> listByTeacherId(String teacherId);
+
+    /**
+     * 查询某门课程下的所有学生
+     * @param courseId 课程ID
+     * @return 学生列表
+     */
+    List<Student> getStudentsByCourseId(Integer courseId);
 }

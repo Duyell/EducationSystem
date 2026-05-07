@@ -4,8 +4,15 @@
       <el-input v-model="form.courseName" placeholder="请输入课程名称" />
     </el-form-item>
 
-    <el-form-item label="教师工号" prop="teacherId">
-      <el-input v-model="form.teacherId" placeholder="请输入授课教师工号" />
+    <el-form-item label="授课教师" prop="teacherId">
+      <el-select v-model="form.teacherId" placeholder="请选择授课教师" filterable clearable style="width:100%">
+        <el-option
+          v-for="item in teacherList"
+          :key="item.teacherId"
+          :label="`${item.teacherName}（${item.teacherId}）${item.collegeName ? ' - '+item.collegeName : ''}`"
+          :value="item.teacherId"
+        />
+      </el-select>
     </el-form-item>
 
     <el-form-item label="所属学院" prop="collegeId">
@@ -47,20 +54,16 @@ import { ref, onMounted } from 'vue'
 import axios from '@/utils/request'
 import { ElMessage } from 'element-plus'
 
-interface College {
+interface Teacher {
   id: number
+  teacherName: string
+  teacherId: string
   collegeName: string
 }
 
-interface Course {
+interface College {
   id: number
-  courseName: string
-  teacherId: string
-  collegeId: number | string
-  term: string
-  credit: number
-  classHour: number
-  maxStudent: number
+  collegeName: string
 }
 
 const emit = defineEmits(['success', 'close'])
@@ -79,12 +82,21 @@ const form = ref({
 
 const rules = ref({
   courseName: [{ required: true, message: '课程名称不能为空', trigger: 'blur' }],
-  teacherId: [{ required: true, message: '教师工号不能为空', trigger: 'blur' }],
+  teacherId: [{ required: true, message: '请选择授课教师', trigger: 'change' }],
   collegeId: [{ required: true, message: '请选择学院', trigger: 'change' }],
   term: [{ required: true, message: '学期不能为空', trigger: 'blur' }]
 })
 
+const teacherList = ref([] as Teacher[])
 const collegeList = ref([] as College[])
+
+const getTeacherList = async () => {
+  try {
+    const res = await axios.get('/api/teacher/all')
+    teacherList.value = res.data || []
+  } catch {}
+}
+
 const getCollegeList = async () => {
   const res = await axios.get('/api/college')
   collegeList.value = res.data.list
@@ -125,6 +137,7 @@ const close = () => {
 }
 
 onMounted(() => {
+  getTeacherList()
   getCollegeList()
 })
 

@@ -54,7 +54,7 @@
           （本平台为互联网非涉密平台，严禁处理、传输国家秘密）
         </p>
         <div class="date-info">
-          今天是 {{ currentDate }} 星期{{ weekDay }} &nbsp;&nbsp; 2025-2026-2 &nbsp;&nbsp; 第6周
+          今天是 {{ currentDate }} 星期{{ weekDay }} &nbsp;&nbsp; 2025-2026-2 &nbsp;&nbsp; 第{{ currentWeek }}周
         </div>
       </div>
 
@@ -80,13 +80,9 @@
             </el-card>
           </el-col>
           <el-col :span="6">
-            <el-card class="stat-card" v-if="userRole === 'admin'">
+            <el-card class="stat-card">
               <div class="stat-title">班级总数</div>
               <div class="stat-number">{{ classTotal }}</div>
-            </el-card>
-            <el-card class="stat-card" v-else>
-              <div class="stat-title">今日签到</div>
-              <div class="stat-number">987</div>
             </el-card>
           </el-col>
         </el-row>
@@ -197,6 +193,15 @@ const weekDay = computed(() => {
   const weekMap = ['一', '二', '三', '四', '五', '六', '日']
   const now = new Date()
   return weekMap[now.getDay() === 0 ? 6 : now.getDay() - 1]
+})
+
+const currentWeek = computed(() => {
+  const semesterStart = new Date('2026-03-02')
+  const now = new Date()
+  const diff = now.getTime() - semesterStart.getTime()
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+  const week = Math.floor(days / 7) + 1
+  return week < 1 ? 1 : week
 })
 
 // ====================== 4. 生命周期（彻底修复） ======================

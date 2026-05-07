@@ -2,8 +2,10 @@ package duyell.controller;
 
 import com.duyell.Score;
 import duyell.service.ScoreService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import utils.JwtUtil;
 import utils.PageResult;
 import utils.Result;
 
@@ -15,6 +17,7 @@ import utils.Result;
 @RequestMapping("/score")
 public class ScoreController {
     private final ScoreService scoreService;
+    private final JwtUtil jwtUtil;
 
     @GetMapping
     public Result<PageResult<Score>> page(@RequestParam(defaultValue = "1") Integer page,
@@ -23,6 +26,16 @@ public class ScoreController {
                                           @RequestParam(required = false) Integer courseId,
                                           @RequestParam(required = false) String term) {
         PageResult<Score> pageResult = scoreService.page(page, pageSize, studentId, courseId,term);
+        return Result.success(pageResult);
+    }
+
+    @GetMapping("/my")
+    public Result<PageResult<Score>> myScores(@RequestParam(defaultValue = "1") Integer page,
+                                               @RequestParam(defaultValue = "10") Integer pageSize,
+                                               HttpServletRequest request) {
+        String token = request.getHeader("token");
+        String studentId = jwtUtil.getUsernameFromToken(token);
+        PageResult<Score> pageResult = scoreService.page(page, pageSize, Integer.valueOf(studentId), null, null);
         return Result.success(pageResult);
     }
 

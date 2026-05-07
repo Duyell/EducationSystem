@@ -40,6 +40,18 @@ public class TeacherController {
         return Result.success(pageResult);
     }
 
+    @GetMapping("/all")
+    public Result<List<Teacher>> all() {
+        List<Teacher> list = teacherService.list();
+        for(Teacher teacher: list){
+            College college = collegeServiceImpl.selectById(teacher.getCollegeId());
+            if(college != null){
+                teacher.setCollegeName(college.getCollegeName());
+            }
+        }
+        return Result.success(list);
+    }
+
     @PostMapping
     public Result<String> add(@RequestBody Teacher teacher) {
         teacherService.add(teacher);

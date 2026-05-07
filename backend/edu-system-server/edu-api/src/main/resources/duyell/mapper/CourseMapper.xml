@@ -3,6 +3,20 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="duyell.mapper.CourseMapper">
+    <select id="selectCourseById" resultType="com.duyell.Course">
+        select c.*, t.teacher_name as teacherName, co.college_name as collegeName
+        from course c
+        left join teacher t on c.teacher_id = t.teacher_id
+        left join college co on c.college_id = co.id
+        where c.id = #{id}
+    </select>
+    <select id="selectByTeacherId" resultType="com.duyell.Course">
+        select c.*, t.teacher_name as teacherName, co.college_name as collegeName
+        from course c
+        left join teacher t on c.teacher_id = t.teacher_id
+        left join college co on c.college_id = co.id
+        where c.teacher_id = #{teacherId}
+    </select>
     <update id="update">
         update course
         <set>

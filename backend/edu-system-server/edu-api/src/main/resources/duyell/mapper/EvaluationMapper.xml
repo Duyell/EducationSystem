@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="duyell.mapper.EvaluationMapper">
+    <select id="list" resultType="com.duyell.TeacherEvaluation">
+        select e.*, c.course_name as courseName, t.teacher_name as teacherName,
+               s.student_name as studentName
+        from teacher_evaluation e
+        left join course c on e.course_id = c.id
+        left join teacher t on e.teacher_id = t.teacher_id
+        left join student s on e.student_id = s.student_id
+        <where>
+            <if test="courseId != null">
+                and e.course_id = #{courseId}
+            </if>
+            <if test="studentId != null and studentId != ''">
+                and e.student_id = #{studentId}
+            </if>
+            <if test="teacherId != null and teacherId != ''">
+                and e.teacher_id = #{teacherId}
+            </if>
+        </where>
+    </select>
+</mapper>

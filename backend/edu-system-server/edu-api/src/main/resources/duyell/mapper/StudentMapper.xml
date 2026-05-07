@@ -82,4 +82,15 @@
             </if>
         </where>
     </select>
+    <select id="selectByStudentIds" resultType="com.duyell.Student">
+        select s.*, c.clazz_name, m.major_name, col.college_name
+        from student s
+        left join clazz c on s.clazz_id = c.id
+        left join major m on c.major_id = m.id
+        left join college col on m.college_id = col.id
+        where s.student_id in
+        <foreach collection="studentIds" item="id" separator="," open="(" close=")">
+            #{id}
+        </foreach>
+    </select>
 </mapper>

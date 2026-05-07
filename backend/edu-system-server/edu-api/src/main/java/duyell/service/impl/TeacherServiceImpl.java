@@ -55,4 +55,9 @@ public class TeacherServiceImpl implements TeacherService {
     public void update(Teacher teacher) {
         teacherMapper.updateTeacher(teacher);
     }
+
+    @Override
+    public List<Teacher> list() {
+        return teacherMapper.listAll();
+    }
 }

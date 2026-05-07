@@ -1,11 +1,17 @@
 package duyell.controller;
 
 import com.duyell.Course;
+import com.duyell.Student;
+import duyell.mapper.StudentMapper;
 import duyell.service.CourseService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import utils.JwtUtil;
 import utils.PageResult;
 import utils.Result;
+
+import java.util.List;
 
 /**
  * @author duyell
@@ -15,6 +21,8 @@ import utils.Result;
 @RequestMapping("/course")
 public class CourseController {
     private final CourseService courseService;
+    private final StudentMapper studentMapper;
+    private final JwtUtil jwtUtil;
 
     @GetMapping
     public Result<PageResult<Course>> page(@RequestParam(defaultValue = "1") Integer page,
@@ -28,6 +36,20 @@ public class CourseController {
                                            @RequestParam(required = false) Integer maxStudent) {
         PageResult<Course> pageResult = courseService.page(page, pageSize, courseName,teacherName, teacherId, collegeId, credit, classHour, maxStudent);
         return Result.success(pageResult);
+    }
+
+    @GetMapping("/my")
+    public Result<List<Course>> myCourses(HttpServletRequest request) {
+        String token = request.getHeader("token");
+        String teacherId = jwtUtil.getUsernameFromToken(token);
+        List<Course> courses = courseService.listByTeacherId(teacherId);
+        return Result.success(courses);
+    }
+
+    @GetMapping("/{courseId}/students")
+    public Result<List<Student>> courseStudents(@PathVariable Integer courseId) {
+        List<Student> students = courseService.getStudentsByCourseId(courseId);
+        return Result.success(students);
     }
 
     @PostMapping

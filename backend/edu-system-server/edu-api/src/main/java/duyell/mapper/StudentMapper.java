@@ -67,4 +67,11 @@ public interface StudentMapper {
      * @param student 学生
      */
     void updateStudent(Student student);
+
+    /**
+     * 根据学号列表查询学生
+     * @param studentIds 学号列表
+     * @return 学生列表
+     */
+    List<Student> selectByStudentIds(@Param("studentIds") List<String> studentIds);
 }
