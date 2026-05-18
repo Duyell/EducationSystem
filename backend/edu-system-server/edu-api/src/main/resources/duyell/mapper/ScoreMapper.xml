@@ -6,14 +6,14 @@
     <update id="update">
         update score
         <set>
-            <if test="usual_score != null">
-                usual_score = #{usual_score},
+            <if test="usualScore != null">
+                usual_score = #{usualScore},
             </if>
-            <if test="exam_score != null">
-                exam_score = #{exam_score},
+            <if test="examScore != null">
+                exam_score = #{examScore},
             </if>
-            <if test="total_score != null">
-                total_score = #{total_score},
+            <if test="totalScore != null">
+                total_score = #{totalScore},
             </if>
         </set>
         where id = #{id}

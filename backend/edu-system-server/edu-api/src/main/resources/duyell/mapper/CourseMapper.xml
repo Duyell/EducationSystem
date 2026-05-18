@@ -36,10 +36,10 @@
                 credit = #{credit},
             </if>
             <if test="classHour != null ">
-                classHour = #{classHour},
+                class_hour = #{classHour},
             </if>
             <if test="maxStudent != null ">
-                maxStudent = #{maxStudent},
+                max_student = #{maxStudent},
             </if>
         </set>
         where id = #{id}

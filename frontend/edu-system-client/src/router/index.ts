@@ -1,7 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Layout from '@/components/Layout.vue'
-import path from 'path'
-
 const routes = [
   {
     path: '/',
@@ -20,6 +18,10 @@ const routes = [
       {
         path: 'index',
         component: () => import('../views/index.vue')
+      },
+      {
+        path: 'ai',
+        component: () => import('../views/ai/index.vue')
       },
       {
         path: 'user',
@@ -64,6 +66,16 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes
+})
+
+// 路由守卫：检查登录状态
+router.beforeEach((to, _from, next) => {
+  const token = sessionStorage.getItem('token')
+  if (to.meta?.requireAuth && !token) {
+    next('/login')
+  } else {
+    next()
+  }
 })
 
 export default router

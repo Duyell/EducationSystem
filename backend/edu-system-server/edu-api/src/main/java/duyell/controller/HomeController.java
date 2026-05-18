@@ -5,22 +5,21 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import utils.Result;
 
 import java.util.Map;
 
 /**
  * @author duyell
  */
+@RequiredArgsConstructor
 @RestController
 @RequestMapping("/home")
 public class HomeController {
     private final HomeService homeService;
-    public HomeController(HomeService homeService) {
-        this.homeService = homeService;
-    }
+
     @GetMapping("/statistics")
-    public Map<String, Object> statistics() {
-        // 直接返回数据，前端直接解析
-        return homeService.getStatistics();
+    public Result<Map<String, Object>> statistics() {
+        return Result.success(homeService.getStatistics());
     }
 }

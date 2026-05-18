@@ -27,8 +27,6 @@
       </div>
 
       <div class="header-right">
-        <el-icon :size="24" color="#fff" class="search-icon"><Search /></el-icon>
-
         <el-dropdown class="user-dropdown" @command="handleUserCommand">
           <span class="user-info">
             <el-avatar :size="40" :src="userAvatar" />
@@ -98,7 +96,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, ArrowDown, House } from '@element-plus/icons-vue'
+import { ArrowDown, House } from '@element-plus/icons-vue'
 import axios from '@/utils/request'
 import { ro } from 'element-plus/es/locale/index.mjs'
 
@@ -113,6 +111,7 @@ const userAvatar = ref('https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e
 // 管理员专用菜单
 const adminMenuList = [
   { name: '首页', path: '/index' },
+  { name: 'AI 助手', path: '/ai' },
   { name: '用户管理', path: '/user' },
   { name: '教师管理', path: '/teacher' },
   { name: '学生管理', path: '/student' },
@@ -126,6 +125,7 @@ const adminMenuList = [
 // 教师/学生公共菜单
 const commonMenuList = [
   { name: '首页', path: '/index' },
+  { name: 'AI 助手', path: '/ai' },
   { name: '课程', path: '/course' },
   { name: '成绩', path: '/score' },
   { name: '教评', path: '/evaluate' }
@@ -168,11 +168,10 @@ const loadStatistics = async () => {
   console.log("✅ 首页开始请求数据：/api/home/statistics") // 必打印
   try {
     const res = await axios.get('/api/home/statistics')
-    studentTotal.value = res.totalStudents || 0
-    teacherTotal.value = res.totalTeachers || 0
-    courseTotal.value = res.totalCourses || 0
-    classTotal.value = res.totalClasses || 0
-    console.log("✅ 首页数据加载成功", res.data)
+    studentTotal.value = res.data?.totalStudents ?? 0
+    teacherTotal.value = res.data?.totalTeachers ?? 0
+    courseTotal.value = res.data?.totalCourses ?? 0
+    classTotal.value = res.data?.totalClasses ?? 0
   } catch (error) {
     console.error('❌ 加载统计数据失败:', error)
   } finally {
@@ -329,9 +328,6 @@ const onMenuClick = (path: string) => {
   gap: 20px;
 }
 
-.search-icon {
-  cursor: pointer;
-}
 
 .user-dropdown {
   cursor: pointer;

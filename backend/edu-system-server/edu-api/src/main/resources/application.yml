@@ -20,11 +20,16 @@ spring:
 
 
 mybatis:
-  mapper-locations: classpath:mapper/*.xml
-  type-aliases-package: com.duyell.pojo
+  mapper-locations: classpath:duyell/mapper/*.xml
+  type-aliases-package: com.duyell
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
 server:
   port: 8080
+
+ai:
+  base-url: ${AI_BASE_URL:https://api.deepseek.com}
+  api-key: ${AI_API_KEY:}
+  model: ${AI_MODEL:deepseek-v4-flash}

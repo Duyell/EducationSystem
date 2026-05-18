@@ -8,6 +8,7 @@ import duyell.mapper.SysUserMapper;
 import duyell.mapper.TeacherMapper;
 import duyell.service.TeacherService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import utils.PageResult;
@@ -22,6 +23,7 @@ import java.util.List;
 public class TeacherServiceImpl implements TeacherService {
     private final TeacherMapper teacherMapper;
     private final SysUserMapper sysUserMapper;
+    private final PasswordEncoder passwordEncoder;
     @Override
     public PageResult<Teacher> page(Integer pageNum, Integer pageSize, String teacherName, String teacherId, Integer collegeId, String title) {
         //1.设置分页参数
@@ -35,7 +37,7 @@ public class TeacherServiceImpl implements TeacherService {
     public void add(Teacher teacher) {
         SysUser sysUser = new SysUser();
         sysUser.setUsername(teacher.getTeacherId());
-        sysUser.setPassword("123456");
+        sysUser.setPassword(passwordEncoder.encode("123456"));
         sysUser.setRole("teacher");
         sysUser.setEmail(teacher.getEmail());
         sysUser.setPhone(teacher.getPhone());
