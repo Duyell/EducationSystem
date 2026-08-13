@@ -60,6 +60,23 @@ public interface CourseSelectionMapper {
     List<CourseSelection> selectByStudentId(String studentId);
 
     /**
+     * 查询单条选课记录
+     * @param courseId 课程id
+     * @param studentId 学生id
+     * @return 选课记录（未选时返回 null）
+     */
+    @Select("select * from course_selection where course_id = #{courseId} and student_id = #{studentId}")
+    CourseSelection select(Integer courseId, String studentId);
+
+    /**
+     * 统计某课程的已选人数
+     * @param courseId 课程id
+     * @return 已选人数
+     */
+    @Select("select count(*) from course_selection where course_id = #{courseId}")
+    int countByCourseId(Integer courseId);
+
+    /**
      * 统计选课数量
      * @return 选课数量
      */

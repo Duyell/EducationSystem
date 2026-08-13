@@ -71,7 +71,7 @@ interface Teacher {
   title: string
 }
 
-const emit = defineEmits(['success'])
+const emit = defineEmits(['success', 'close'])
 const formRef = ref()
 
 // 表单数据

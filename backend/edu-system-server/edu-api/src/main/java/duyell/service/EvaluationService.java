@@ -11,4 +11,11 @@ public interface EvaluationService {
                                         Integer courseId, String studentId, String teacherId);
 
     TeacherEvaluation check(Integer courseId, String studentId);
+
+    /**
+     * 教师收到的所有评价的平均分（不受分页影响）
+     * @param teacherId 教师工号
+     * @return 平均分
+     */
+    Double avgScoreByTeacherId(String teacherId);
 }

@@ -1,0 +1,68 @@
+# 教务系统一键部署：docker compose up -d --build
+# 访问 http://localhost （前端），后端 http://localhost:8080
+# 生产环境务必修改：MySQL 密码、JWT_SECRET、AI_API_KEY
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: edu-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: edujwxt
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次启动自动建表并导入种子数据
+      - ./edujwxt.sql:/docker-entrypoint-initdb.d/01-edujwxt.sql:ro
+      - ./seed_data.sql:/docker-entrypoint-initdb.d/02-seed_data.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p123456"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: edu-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend/edu-system-server
+    container_name: edu-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/edujwxt?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf-8&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 123456
+      SPRING_DATA_REDIS_HOST: redis
+      # 生产环境必须更换为强随机密钥（>=32 字节）
+      JWT_SECRET: edu-system-docker-default-secret-change-me-0123456789
+      # 部署 AI 对话功能时设置（可选，不设则 AI 功能降级）
+      AI_API_KEY: ${AI_API_KEY:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./frontend/edu-system-client
+    container_name: edu-frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  mysql-data:

@@ -74,9 +74,9 @@ public interface TeacherMapper {
     void updateTeacher(Teacher teacher);
 
     /**
-     * 查询所有教师
+     * 查询所有教师（JOIN 学院，避免 N+1）
      * @return 教师列表
      */
-    @Select("select * from teacher")
+    @Select("select t.*, co.college_name as collegeName from teacher t left join college co on t.college_id = co.id")
     List<Teacher> listAll();
 }

@@ -47,9 +47,21 @@ public class CourseController {
     }
 
     @GetMapping("/{courseId}/students")
-    public Result<List<Student>> courseStudents(@PathVariable Integer courseId) {
+    public Result<List<Student>> courseStudents(@PathVariable Integer courseId, HttpServletRequest request) {
+        // 教师只能查看自己课程的选课名单（管理员不受限）
+        if ("teacher".equals(getRole(request)) && !courseService.isCourseOfTeacher(getUsername(request), courseId)) {
+            return Result.error("403", "无权限查看该课程的选课名单");
+        }
         List<Student> students = courseService.getStudentsByCourseId(courseId);
         return Result.success(students);
+    }
+
+    private String getUsername(HttpServletRequest request) {
+        return jwtUtil.getUsernameFromToken(request.getHeader("token"));
+    }
+
+    private String getRole(HttpServletRequest request) {
+        return jwtUtil.getRoleFromToken(request.getHeader("token"));
     }
 
     @PostMapping

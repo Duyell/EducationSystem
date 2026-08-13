@@ -20,7 +20,7 @@
         </el-form>
       </div>
 
-      <el-table :data="list" border class="crud-table">
+      <el-table :data="list" border class="crud-table" v-loading="loading" empty-text="暂无数据">
         <!-- ID 列已删除 -->
         <el-table-column prop="username" label="用户名" />
         <el-table-column prop="role" label="角色" />
@@ -51,7 +51,6 @@
 </template>
 
 <script setup lang="ts">
-console.log('User management component mounted')
 import { ref, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from '@/utils/request'
@@ -60,19 +59,22 @@ const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const list = ref([])
+const loading = ref(false)
 const query = reactive({ username: '', role: '' })
 
 const getList = async () => {
+  loading.value = true
   try {
     const res = await axios.get('/api/user', { params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value } })
     list.value = res.data.list
     total.value = res.data.total
-    console.log(res.data)
   } catch (error) {
     console.error('获取用户列表失败:', error)
     ElMessage.error('获取用户列表失败')
     list.value = []
     total.value = 0
+  } finally {
+    loading.value = false
   }
 }
 

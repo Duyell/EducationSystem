@@ -34,7 +34,7 @@
         </el-form>
       </div>
 
-      <el-table :data="list" border class="crud-table" stripe>
+      <el-table :data="list" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
         <el-table-column prop="teacherName" label="姓名" width="90" />
         <el-table-column prop="teacherId" label="工号" width="110" />
         <el-table-column prop="gender" label="性别" width="70" />
@@ -67,16 +67,18 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, onMounted ,nextTick} from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from '@/utils/request'
 import TeacherForm from './components/TeacherForm.vue'
+import type { College, Teacher } from '@/types/models'
 
 const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
-const list = ref([])
+const list = ref<Teacher[]>([])
+const loading = ref(false)
 
 const dialogVisible = ref(false)
 const formRef = ref()
@@ -90,7 +92,7 @@ const query = reactive({
 })
 
 // 学院下拉数据
-const collegeList = ref([])
+const collegeList = ref<College[]>([])
 
 // 获取学院列表
 const getCollegeList = async () => {
@@ -104,11 +106,18 @@ const getCollegeList = async () => {
 
 // 教师列表
 const getList = async () => {
-  const res = await axios.get('/api/teacher', {
-    params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value }
-  })
-  list.value = res.data.list
-  total.value = res.data.total
+  loading.value = true
+  try {
+    const res = await axios.get('/api/teacher', {
+      params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value }
+    })
+    list.value = res.data.list
+    total.value = res.data.total
+  } catch (e) {
+    console.error('加载教师列表失败:', e)
+  } finally {
+    loading.value = false
+  }
 }
 
 // 重置搜索
@@ -125,15 +134,15 @@ const handleAdd = () => {
   formRef.value?.reset()
 }
 
-const handleEdit = (row) => {
+const handleEdit = (row: Teacher) => {
   dialogVisible.value = true
   nextTick(() => {
     formRef.value?.setData(row)
   })
-  
+
 }
 
-const handleDelete = async (id) => {
+const handleDelete = async (id: number) => {
   await ElMessageBox.confirm('确定删除该教师信息？')
   await axios.delete(`/api/teacher/${id}`)
   ElMessage.success('删除成功')

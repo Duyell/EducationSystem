@@ -55,4 +55,12 @@ public interface CourseService {
      * @return 学生列表
      */
     List<Student> getStudentsByCourseId(Integer courseId);
+
+    /**
+     * 校验课程是否属于指定教师
+     * @param teacherId 教师工号
+     * @param courseId 课程ID
+     * @return 是否属于该教师
+     */
+    boolean isCourseOfTeacher(String teacherId, Integer courseId);
 }

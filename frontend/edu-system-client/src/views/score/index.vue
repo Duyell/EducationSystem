@@ -18,7 +18,7 @@
         </el-form>
       </div>
 
-      <el-table :data="list" border class="crud-table" stripe>
+      <el-table :data="list" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
         <el-table-column prop="studentId" label="学号" width="120" />
         <el-table-column prop="studentName" label="姓名" width="100" />
         <el-table-column prop="courseName" label="课程名称" min-width="180" />
@@ -51,7 +51,7 @@
         </div>
       </div>
 
-      <el-table :data="list" border class="crud-table" stripe>
+      <el-table :data="list" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
         <el-table-column prop="courseName" label="课程名称" min-width="200" />
         <el-table-column prop="term" label="学期" width="130" />
         <el-table-column prop="usualScore" label="平时成绩" width="110" />
@@ -78,7 +78,7 @@
       </div>
 
       <template v-if="teacherTab === 'selectCourse'">
-        <el-table :data="teacherCourses" border class="crud-table" stripe @row-click="onScoreCourseClick">
+        <el-table :data="teacherCourses" border class="crud-table" stripe @row-click="onScoreCourseClick" v-loading="loading" empty-text="暂无数据">
           <el-table-column prop="courseName" label="课程名" min-width="180" />
           <el-table-column prop="collegeName" label="开课学院" min-width="150" />
           <el-table-column prop="term" label="学期" width="120" />
@@ -99,7 +99,7 @@
           <span class="course-label">{{ selectedCourseForScore.courseName }} — 成绩录入</span>
         </div>
 
-        <el-table :data="scoreStudents" border class="crud-table" stripe>
+        <el-table :data="scoreStudents" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
           <el-table-column prop="studentName" label="姓名" min-width="100" />
           <el-table-column prop="studentId" label="学号" width="120" />
           <el-table-column label="平时成绩" width="130">
@@ -130,20 +130,42 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from '@/utils/request'
 import ScoreForm from './components/ScoreForm.vue'
+import type { Course, Score, Student } from '@/types/models'
 
-const userRole = ref(sessionStorage.getItem('user') ? JSON.parse(sessionStorage.getItem('user')).role : 'admin')
+/** 教师成绩录入行的数据结构 */
+interface ScoreEntryRow {
+  studentId: string
+  studentName: string
+  courseId: number
+  id?: number
+  usualScore: number
+  examScore: number
+}
+
+/** 成绩保存请求体 */
+interface ScorePayload {
+  id?: number
+  courseId: number
+  studentId: string
+  usualScore: number
+  examScore: number
+  totalScore: string
+}
+
+const userRole = ref(sessionStorage.getItem('user') ? JSON.parse(sessionStorage.getItem('user') || '{}').role : 'admin')
 
 // ===================== Common =====================
-const pageNum = ref(1), pageSize = ref(10), total = ref(0), list = ref([])
+const pageNum = ref(1), pageSize = ref(10), total = ref(0), list = ref<Score[]>([])
+const loading = ref(false)
 
-const getGradeType = (score) => {
+const getGradeType = (score: number | undefined) => {
   if (!score && score !== 0) return 'info'
-  const s = parseFloat(score)
+  const s = score
   if (s >= 90) return 'success'
   if (s >= 80) return 'primary'
   if (s >= 70) return 'warning'
@@ -152,50 +174,68 @@ const getGradeType = (score) => {
 }
 
 // ===================== Admin =====================
-const dialogVisible = ref(false), formRef = ref(), courseList = ref([])
+const dialogVisible = ref(false), formRef = ref(), courseList = ref<Course[]>([])
 const query = reactive({ studentId: '', courseId: null, term: '' })
 
 const getCourseList = async () => {
   const res = await axios.get('/api/course'); courseList.value = res.data.list
 }
 const getList = async () => {
-  const res = await axios.get('/api/score', { params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value } })
-  list.value = res.data.list; total.value = res.data.total
+  loading.value = true
+  try {
+    const res = await axios.get('/api/score', { params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value } })
+    list.value = res.data.list; total.value = res.data.total
+  } catch (e) {
+    console.error('加载成绩列表失败:', e)
+  } finally {
+    loading.value = false
+  }
 }
 const resetQuery = () => { query.studentId = ''; query.courseId = null; query.term = ''; getList() }
-const handleEdit = (row) => { dialogVisible.value = true; formRef.value?.setData(row) }
+const handleEdit = (row: Score) => { dialogVisible.value = true; formRef.value?.setData(row) }
 
 // ===================== Student =====================
 const getStudentScores = async () => {
-  const res = await axios.get('/api/score/my', { params: { pageNum: pageNum.value, pageSize: pageSize.value } })
-  list.value = res.data.list; total.value = res.data.total
+  loading.value = true
+  try {
+    const res = await axios.get('/api/score/my', { params: { pageNum: pageNum.value, pageSize: pageSize.value } })
+    list.value = res.data.list; total.value = res.data.total
+  } catch (e) {
+    console.error('加载我的成绩失败:', e)
+  } finally {
+    loading.value = false
+  }
 }
 
 // ===================== Teacher =====================
 const teacherTab = ref('selectCourse')
-const teacherCourses = ref([])
-const selectedCourseForScore = ref(null)
-const scoreStudents = ref([])
+const teacherCourses = ref<Course[]>([])
+const selectedCourseForScore = ref<Course | null>(null)
+const scoreStudents = ref<ScoreEntryRow[]>([])
 
 const loadTeacherCourses = async () => {
+  loading.value = true
   try {
     const res = await axios.get('/api/course/my')
     teacherCourses.value = res.data || []
-  } catch {}
+  } catch (e) { console.error('加载我的课程失败:', e) } finally {
+    loading.value = false
+  }
 }
 
-const selectCourseForScore = async (course) => {
+const selectCourseForScore = async (course: Course) => {
   selectedCourseForScore.value = course
   teacherTab.value = 'enterScore'
   // Load students enrolled in this course
+  loading.value = true
   try {
     const studentsRes = await axios.get(`/api/course/${course.id}/students`)
     // Also load existing scores if any
     const scoresRes = await axios.get('/api/score', { params: { courseId: course.id, pageSize: 100 } })
     const existingScores = scoresRes.data.list || []
 
-    scoreStudents.value = (studentsRes.data || []).map(s => {
-      const existing = existingScores.find(e => e.studentId === s.studentId)
+    scoreStudents.value = (studentsRes.data || []).map((s: Student) => {
+      const existing = existingScores.find((e: Score) => e.studentId === s.studentId)
       return {
         studentId: s.studentId,
         studentName: s.studentName,
@@ -205,20 +245,22 @@ const selectCourseForScore = async (course) => {
         examScore: existing?.examScore ?? 0
       }
     })
-  } catch {}
+  } catch (e) { console.error('加载课程学生与成绩失败:', e) } finally {
+    loading.value = false
+  }
 }
 
-const onScoreCourseClick = (row) => selectCourseForScore(row)
+const onScoreCourseClick = (row: Course) => selectCourseForScore(row)
 
-const computeTotal = (row) => {
-  const usual = parseFloat(row.usualScore) || 0
-  const exam = parseFloat(row.examScore) || 0
+const computeTotal = (row: ScoreEntryRow) => {
+  const usual = parseFloat(String(row.usualScore)) || 0
+  const exam = parseFloat(String(row.examScore)) || 0
   return (usual * 0.4 + exam * 0.6).toFixed(1)
 }
 
-const saveScore = async (row) => {
+const saveScore = async (row: ScoreEntryRow) => {
   const total = computeTotal(row)
-  const payload = {
+  const payload: ScorePayload = {
     courseId: row.courseId,
     studentId: row.studentId,
     usualScore: row.usualScore,
@@ -235,16 +277,15 @@ const saveScore = async (row) => {
     }
     ElMessage.success('保存成功')
     // Refresh to get the id
-    selectCourseForScore(selectedCourseForScore.value)
-  } catch {
-    ElMessage.error('保存失败')
-  }
+    if (selectedCourseForScore.value) selectCourseForScore(selectedCourseForScore.value)
+  } catch (e) { console.error('保存成绩失败:', e) }
 }
 
 const saveAllScores = async () => {
+  let failed = 0
   for (const row of scoreStudents.value) {
     const total = computeTotal(row)
-    const payload = {
+    const payload: ScorePayload = {
       courseId: row.courseId,
       studentId: row.studentId,
       usualScore: row.usualScore,
@@ -255,9 +296,16 @@ const saveAllScores = async () => {
     try {
       if (row.id) await axios.put('/api/score', payload)
       else await axios.post('/api/score', payload)
-    } catch {}
+    } catch (e) {
+      failed++
+      console.error('保存成绩失败:', row.studentName, e)
+    }
   }
-  ElMessage.success('全部保存成功')
+  if (failed > 0) {
+    ElMessage.error(`保存完成，${failed} 条失败，请重试`)
+  } else {
+    ElMessage.success('全部保存成功')
+  }
 }
 
 // ===================== Init =====================

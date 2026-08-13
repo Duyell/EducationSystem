@@ -47,6 +47,10 @@ public class TeacherToolRegistrar implements InitializingBean {
                 ),
                 (args, userId, role) -> {
                     Integer courseId = Integer.valueOf(args.get("courseId").toString());
+                    // 归属校验：教师仅能查看自己课程的选课名单
+                    if (!courseService.isCourseOfTeacher(userId, courseId)) {
+                        return "{\"error\":\"无权限查看该课程的选课名单\"}";
+                    }
                     List<CourseSelection> selections = courseSelectionMapper.selectByCourseId(courseId);
                     List<String> studentIds = selections.stream()
                             .map(CourseSelection::getStudentId)
@@ -73,6 +77,10 @@ public class TeacherToolRegistrar implements InitializingBean {
                 ),
                 (args, userId, role) -> {
                     Integer courseId = Integer.valueOf(args.get("courseId").toString());
+                    // 归属校验：教师仅能为自己课程的选课学生录入成绩
+                    if (!courseService.isCourseOfTeacher(userId, courseId)) {
+                        return "{\"error\":\"无权限为该课程录入成绩\"}";
+                    }
                     String studentId = (String) args.get("studentId");
                     BigDecimal usualScore = args.containsKey("usualScore")
                             ? BigDecimal.valueOf(Double.parseDouble(args.get("usualScore").toString()))
@@ -116,25 +124,35 @@ public class TeacherToolRegistrar implements InitializingBean {
                 (args, userId, role) -> {
                     Integer id = Integer.valueOf(args.get("id").toString());
 
-                    Score score = new Score();
-                    score.setId(id);
+                    Score existing = scoreMapper.selectById(id);
+                    if (existing == null) {
+                        return "{\"error\":\"成绩记录不存在\"}";
+                    }
+                    // 归属校验：教师仅能修改自己课程的成绩
+                    if (!courseService.isCourseOfTeacher(userId, existing.getCourseId())) {
+                        return "{\"error\":\"无权限修改该成绩\"}";
+                    }
+
+                    // 合并更新：只传平时成绩时保留原考试成绩，避免被清零
+                    BigDecimal usual = existing.getUsualScore() != null ? existing.getUsualScore() : BigDecimal.ZERO;
+                    BigDecimal exam = existing.getExamScore() != null ? existing.getExamScore() : BigDecimal.ZERO;
                     if (args.containsKey("usualScore")) {
-                        score.setUsualScore(BigDecimal.valueOf(Double.parseDouble(args.get("usualScore").toString())));
+                        usual = BigDecimal.valueOf(Double.parseDouble(args.get("usualScore").toString()));
                     }
                     if (args.containsKey("examScore")) {
-                        score.setExamScore(BigDecimal.valueOf(Double.parseDouble(args.get("examScore").toString())));
+                        exam = BigDecimal.valueOf(Double.parseDouble(args.get("examScore").toString()));
                     }
-                    // Recalculate total if either score changed
-                    if (args.containsKey("usualScore") || args.containsKey("examScore")) {
-                        BigDecimal usual = score.getUsualScore() != null ? score.getUsualScore() : BigDecimal.ZERO;
-                        BigDecimal exam = score.getExamScore() != null ? score.getExamScore() : BigDecimal.ZERO;
-                        BigDecimal total = usual.multiply(BigDecimal.valueOf(0.4))
-                                .add(exam.multiply(BigDecimal.valueOf(0.6)))
-                                .setScale(1, RoundingMode.HALF_UP);
-                        score.setTotalScore(total);
-                    }
+                    BigDecimal total = usual.multiply(BigDecimal.valueOf(0.4))
+                            .add(exam.multiply(BigDecimal.valueOf(0.6)))
+                            .setScale(1, RoundingMode.HALF_UP);
+
+                    Score score = new Score();
+                    score.setId(id);
+                    score.setUsualScore(usual);
+                    score.setExamScore(exam);
+                    score.setTotalScore(total);
                     scoreMapper.update(score);
-                    return "{\"message\":\"成绩修改成功\"}";
+                    return "{\"message\":\"成绩修改成功\",\"totalScore\":" + total + "}";
                 }
         ));
 

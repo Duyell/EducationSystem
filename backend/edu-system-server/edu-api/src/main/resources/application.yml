@@ -29,6 +29,11 @@ mybatis:
 server:
   port: 8080
 
+jwt:
+  # 生产环境务必通过环境变量 JWT_SECRET 设置强密钥（>=32字节）
+  secret: ${JWT_SECRET:edu_system_dev_secret_change_me_0123456789abcdef}
+  expiration-minutes: ${JWT_EXPIRATION_MINUTES:30}
+
 ai:
   base-url: ${AI_BASE_URL:https://api.deepseek.com}
   api-key: ${AI_API_KEY:}

@@ -7,7 +7,7 @@
         <span class="tip-text">请对您已选课程的授课教师进行客观评价</span>
       </div>
 
-      <el-table :data="evaluableCourses" border class="crud-table" stripe>
+      <el-table :data="evaluableCourses" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
         <el-table-column prop="courseName" label="课程名称" min-width="160" />
         <el-table-column prop="teacherName" label="授课教师" min-width="100" />
         <el-table-column label="评价状态" width="120">
@@ -47,7 +47,7 @@
         </div>
       </div>
 
-      <el-table :data="evaluationList" border class="crud-table" stripe>
+      <el-table :data="evaluationList" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
         <el-table-column prop="courseName" label="课程名称" min-width="160" />
         <el-table-column prop="studentName" label="评价学生" min-width="100" />
         <el-table-column label="评分" width="150">
@@ -66,24 +66,26 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from '@/utils/request'
+import type { Course, EvaluableCourse, TeacherEvaluation } from '@/types/models'
 
-const userRole = ref(sessionStorage.getItem('user') ? JSON.parse(sessionStorage.getItem('user')).role : 'admin')
+const userRole = ref(sessionStorage.getItem('user') ? JSON.parse(sessionStorage.getItem('user') || '{}').role : 'admin')
 
 // ===================== Student =====================
-const evaluableCourses = ref([])
+const evaluableCourses = ref<EvaluableCourse[]>([])
 
 const loadEvaluableCourses = async () => {
+  loading.value = true
   try {
     // Get my selected courses
     const myCoursesRes = await axios.get('/api/course-selection/my')
     const myCourses = myCoursesRes.data || []
 
     // Check evaluation status for each course
-    const enriched = await Promise.all(myCourses.map(async (course) => {
+    const enriched = await Promise.all(myCourses.map(async (course: Course) => {
       try {
         const checkRes = await axios.get(`/api/evaluate/check/${course.id}`)
         const evaluated = checkRes.data != null
@@ -93,15 +95,18 @@ const loadEvaluableCourses = async () => {
           evalScore: evaluated ? checkRes.data.score : 5,
           evalContent: evaluated ? checkRes.data.content : ''
         }
-      } catch {
+      } catch (e) {
+        console.error('查询评价状态失败:', e)
         return { ...course, evaluated: false, evalScore: 5, evalContent: '' }
       }
     }))
     evaluableCourses.value = enriched
-  } catch {}
+  } catch (e) { console.error('加载可评课程失败:', e) } finally {
+    loading.value = false
+  }
 }
 
-const submitEvaluation = async (course) => {
+const submitEvaluation = async (course: EvaluableCourse) => {
   try {
     await axios.post('/api/evaluate', {
       courseId: course.id,
@@ -111,17 +116,19 @@ const submitEvaluation = async (course) => {
     })
     ElMessage.success('评价成功')
     course.evaluated = true
-  } catch (e) {
+  } catch (e: any) {
     ElMessage.error(e.response?.data?.msg || '评价失败')
   }
 }
 
 // ===================== Teacher =====================
 const pageNum = ref(1), pageSize = ref(10), total = ref(0)
-const evaluationList = ref([])
+const loading = ref(false)
+const evaluationList = ref<TeacherEvaluation[]>([])
 const avgScore = ref(0)
 
 const loadEvaluations = async () => {
+  loading.value = true
   try {
     const res = await axios.get('/api/evaluate/teacher', {
       params: { pageNum: pageNum.value, pageSize: pageSize.value }
@@ -129,12 +136,12 @@ const loadEvaluations = async () => {
     evaluationList.value = res.data.list
     total.value = res.data.total
 
-    // Calculate average score
-    if (evaluationList.value.length > 0) {
-      const sum = evaluationList.value.reduce((s, e) => s + e.score, 0)
-      avgScore.value = parseFloat((sum / evaluationList.value.length).toFixed(1))
-    }
-  } catch {}
+    // 平均分取自后端聚合接口（全部评价），不受当前页影响
+    const avgRes = await axios.get('/api/evaluate/teacher/avg')
+    avgScore.value = parseFloat(avgRes.data ?? 0)
+  } catch (e) { console.error('加载评价列表失败:', e) } finally {
+    loading.value = false
+  }
 }
 
 // ===================== Init =====================

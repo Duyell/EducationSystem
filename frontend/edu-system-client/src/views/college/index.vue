@@ -13,7 +13,7 @@
         </el-form>
       </div>
 
-      <el-table :data="list" border class="crud-table" stripe>
+      <el-table :data="list" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
         <el-table-column prop="collegeName" label="学院名称" min-width="200" />
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
@@ -38,27 +38,36 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, onMounted,nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from '@/utils/request'
 import CollegeForm from './components/CollegeForm.vue'
+import type { College } from '@/types/models'
 
 const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
-const list = ref([])
+const list = ref<College[]>([])
+const loading = ref(false)
 const dialogVisible = ref(false)
 const formRef = ref()
 
 const query = reactive({ collegeName: '' })
 
 const getList = async () => {
-  const res = await axios.get('/api/college', {
-    params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value }
-  })
-  list.value = res.data.list
-  total.value = res.data.total
+  loading.value = true
+  try {
+    const res = await axios.get('/api/college', {
+      params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value }
+    })
+    list.value = res.data.list
+    total.value = res.data.total
+  } catch (e) {
+    console.error('加载学院列表失败:', e)
+  } finally {
+    loading.value = false
+  }
 }
 
 const resetQuery = () => {
@@ -71,12 +80,12 @@ const handleAdd = () => {
   formRef.value?.reset()
 }
 
-const handleEdit = (row) => {
+const handleEdit = (row: College) => {
   dialogVisible.value = true
   nextTick(() => formRef.value?.setData(row))
 }
 
-const handleDelete = async (id) => {
+const handleDelete = async (id: number) => {
   await ElMessageBox.confirm('确定删除该学院？')
   await axios.delete(`/api/college/${id}`)
   ElMessage.success('删除成功')

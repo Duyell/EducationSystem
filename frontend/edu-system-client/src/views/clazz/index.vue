@@ -26,7 +26,7 @@
         </el-form>
       </div>
 
-      <el-table :data="list" border class="crud-table" stripe>
+      <el-table :data="list" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
         <el-table-column prop="clazzName" label="班级名称" width="140" />
         <el-table-column prop="grade" label="年级" width="100" />
         <el-table-column prop="majorName" label="所属专业" min-width="150" />
@@ -54,16 +54,18 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, onMounted,nextTick } from 'vue'
 import { ElFormItem, ElMessage, ElMessageBox } from 'element-plus'
 import axios from '@/utils/request'
 import ClazzForm from './components/ClazzForm.vue'
+import type { Clazz, College, Major } from '@/types/models'
 
-const pageNum = ref(1), pageSize = ref(10), total = ref(0), list = ref([])
+const pageNum = ref(1), pageSize = ref(10), total = ref(0), list = ref<Clazz[]>([])
+const loading = ref(false)
 const dialogVisible = ref(false), formRef = ref()
-const majorList = ref([])
-const collegeList = ref([])
+const majorList = ref<Major[]>([])
+const collegeList = ref<College[]>([])
 
 
 const query = reactive({
@@ -84,9 +86,16 @@ const getCollegeList = async () => {
 }
 
 const getList = async () => {
-  const res = await axios.get('/api/clazz', { params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value } })
-  list.value = res.data.list
-  total.value = res.data.total
+  loading.value = true
+  try {
+    const res = await axios.get('/api/clazz', { params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value } })
+    list.value = res.data.list
+    total.value = res.data.total
+  } catch (e) {
+    console.error('加载班级列表失败:', e)
+  } finally {
+    loading.value = false
+  }
 }
 
 const resetQuery = () => {
@@ -97,10 +106,10 @@ const resetQuery = () => {
 }
 
 const handleAdd = () => { dialogVisible.value = true; formRef.value?.reset() }
-const handleEdit = (row) => { dialogVisible.value = true; 
+const handleEdit = (row: Clazz) => { dialogVisible.value = true;
   nextTick(() => { formRef.value?.setData(row) }) }
 
-const handleDelete = async (id) => {
+const handleDelete = async (id: number) => {
   await ElMessageBox.confirm('确定删除？')
   await axios.delete(`/api/clazz/${id}`)
   ElMessage.success('删除成功')

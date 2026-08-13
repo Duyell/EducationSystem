@@ -1,18 +1,6 @@
-overrides:
-  'vue': 'beta'
-  '@vue/compiler-core': 'beta'
-  '@vue/compiler-dom': 'beta'
-  '@vue/compiler-sfc': 'beta'
-  '@vue/compiler-ssr': 'beta'
-  '@vue/compiler-vapor': 'beta'
-  '@vue/reactivity': 'beta'
-  '@vue/runtime-core': 'beta'
-  '@vue/runtime-dom': 'beta'
-  '@vue/runtime-vapor': 'beta'
-  '@vue/server-renderer': 'beta'
-  '@vue/shared': 'beta'
-  '@vue/compat': 'beta'
-
+# 2026-08-13 移除了 vue/@vue/* 的 'beta' 覆盖：
+# 该覆盖会导致 pnpm install 解析出 vue 3.6.0-beta 等预发布版本，引发类型错误。
+# 如需锁定版本请在 package.json 中使用具体版本号。
 peerDependencyRules:
   allowAny:
     - 'vue'

@@ -17,6 +17,16 @@
         left join college co on c.college_id = co.id
         where c.teacher_id = #{teacherId}
     </select>
+    <select id="selectByIds" resultType="com.duyell.Course">
+        select c.*, t.teacher_name as teacherName, co.college_name as collegeName
+        from course c
+        left join teacher t on c.teacher_id = t.teacher_id
+        left join college co on c.college_id = co.id
+        where c.id in
+        <foreach collection="ids" item="id" separator="," open="(" close=")">
+            #{id}
+        </foreach>
+    </select>
     <update id="update">
         update course
         <set>
@@ -74,7 +84,7 @@
                 and c.class_hour = #{classHour}
             </if>
             <if test="maxStudent != null ">
-                and c.max_student &lt;= #{maxStudent}
+                and c.max_student &gt;= #{maxStudent}
             </if>
         </where>
     </select>

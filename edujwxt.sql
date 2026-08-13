@@ -26,7 +26,8 @@ CREATE TABLE `clazz`  (
   `clazz_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `major_id` int NOT NULL,
   `grade` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_clazz_major`(`major_id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -67,7 +68,9 @@ CREATE TABLE `course`  (
   `credit` decimal(4, 1) NOT NULL,
   `class_hour` int NOT NULL,
   `max_student` int NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_course_teacher`(`teacher_id` ASC) USING BTREE,
+  INDEX `idx_course_college`(`college_id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -85,7 +88,9 @@ CREATE TABLE `course_selection`  (
   `course_id` int NOT NULL,
   `student_id` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `select_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`) USING BTREE
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_course_selection_course_student`(`course_id` ASC, `student_id` ASC) USING BTREE,
+  INDEX `idx_course_selection_student`(`student_id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -103,7 +108,8 @@ CREATE TABLE `major`  (
   `id` int NOT NULL AUTO_INCREMENT,
   `major_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `college_id` int NOT NULL,
-  PRIMARY KEY (`id`) USING BTREE
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_major_college`(`college_id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -125,7 +131,9 @@ CREATE TABLE `score`  (
   `usual_score` decimal(5, 1) NULL DEFAULT 0.0,
   `exam_score` decimal(5, 1) NULL DEFAULT 0.0,
   `total_score` decimal(5, 1) NULL DEFAULT 0.0,
-  PRIMARY KEY (`id`) USING BTREE
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_score_course_student`(`course_id` ASC, `student_id` ASC) USING BTREE,
+  INDEX `idx_score_student`(`student_id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -227,7 +235,9 @@ CREATE TABLE `teacher_evaluation` (
   `score` int DEFAULT 5,
   `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`) USING BTREE
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_eval_course_student`(`course_id` ASC, `student_id` ASC) USING BTREE,
+  INDEX `idx_eval_teacher`(`teacher_id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 SET FOREIGN_KEY_CHECKS = 1;

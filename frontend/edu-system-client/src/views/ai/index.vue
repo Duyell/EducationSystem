@@ -112,6 +112,7 @@ import { ref, onMounted, nextTick, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ChatDotSquare, ChatLineSquare, ChatDotRound, User, Loading, WarningFilled } from '@element-plus/icons-vue'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import request from '@/utils/request'
 
 // Configure marked for safe rendering
@@ -157,7 +158,9 @@ const examplePrompts = computed(() => {
 
 const renderMarkdown = (content: string) => {
   try {
-    return marked.parse(content, { async: false }) as string
+    const html = marked.parse(content, { async: false }) as string
+    // XSS 防护：AI 输出（可能含工具返回的学生名/课程名等）渲染前先消毒
+    return DOMPurify.sanitize(html)
   } catch {
     return content
   }

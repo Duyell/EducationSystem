@@ -35,4 +35,11 @@ public interface ScoreService {
      * @param score 成绩
      */
     void update(Score score);
+
+    /**
+     * 根据ID查询成绩
+     * @param scoreId 成绩id
+     * @return 成绩
+     */
+    Score selectById(Integer scoreId);
 }

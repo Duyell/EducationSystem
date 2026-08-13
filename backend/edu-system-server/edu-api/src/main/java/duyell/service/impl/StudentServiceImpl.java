@@ -8,7 +8,7 @@ import duyell.mapper.StudentMapper;
 import duyell.mapper.SysUserMapper;
 import duyell.service.StudentService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import utils.JwtUtil;
@@ -25,6 +25,7 @@ public class StudentServiceImpl implements StudentService {
     private final StudentMapper studentMapper;
     private final SysUserMapper sysUserMapper;
     private final JwtUtil jwtUtil;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     public PageResult<Student> page(Integer pageNum, Integer pageSize, String studentName, String studentId, Integer collegeId, Integer majorId, Integer clazzId) {
@@ -40,10 +41,8 @@ public class StudentServiceImpl implements StudentService {
     public void add(Student student) {
         SysUser sysUser = new SysUser();
         sysUser.setUsername(student.getStudentId());
-        String password = "123456";
-        BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-        String encodePassword = passwordEncoder.encode(password);
-        sysUser.setPassword(encodePassword);
+        // 默认密码 123456（与教师/种子数据一致，上线前应改为随机初始密码并提示修改）
+        sysUser.setPassword(passwordEncoder.encode("123456"));
         sysUser.setRole("student");
         sysUser.setEmail(student.getEmail());
         sysUser.setPhone(student.getPhone());

@@ -1,9 +1,7 @@
 package duyell.controller;
 
-import com.duyell.College;
 import com.duyell.Teacher;
 import duyell.service.TeacherService;
-import duyell.service.impl.CollegeServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import utils.PageResult;
@@ -13,13 +11,13 @@ import java.util.List;
 
 /**
  * @author duyell
+ * 教师管理：学院名称由 SQL JOIN 直接带出（TeacherMapper.list/listAll），无需循环查询
  */
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/teacher")
 public class TeacherController {
     private final TeacherService teacherService;
-    private final CollegeServiceImpl collegeServiceImpl;
 
     @GetMapping
     public Result<PageResult<Teacher>> page(
@@ -29,27 +27,12 @@ public class TeacherController {
                                     @RequestParam(required = false) String teacherId,
                                     @RequestParam(required = false) Integer collegeId,
                                     @RequestParam(required = false) String title) {
-        PageResult<Teacher> pageResult = teacherService.page(pageNum, pageSize, teacherName, teacherId,collegeId,title);
-        List<Teacher> list = pageResult.getList();
-        for(Teacher teacher:list){
-            College college = collegeServiceImpl.selectById(teacher.getCollegeId());
-            if(college != null){
-                teacher.setCollegeName(college.getCollegeName());
-            }
-        }
-        return Result.success(pageResult);
+        return Result.success(teacherService.page(pageNum, pageSize, teacherName, teacherId, collegeId, title));
     }
 
     @GetMapping("/all")
     public Result<List<Teacher>> all() {
-        List<Teacher> list = teacherService.list();
-        for(Teacher teacher: list){
-            College college = collegeServiceImpl.selectById(teacher.getCollegeId());
-            if(college != null){
-                teacher.setCollegeName(college.getCollegeName());
-            }
-        }
-        return Result.success(list);
+        return Result.success(teacherService.list());
     }
 
     @PostMapping

@@ -48,6 +48,13 @@ public class EvaluationController {
         return Result.success(page);
     }
 
+    @GetMapping("/teacher/avg")
+    public Result<Double> teacherAvgScore(HttpServletRequest request) {
+        String teacherId = getCurrentUsername(request);
+        Double avg = evaluationService.avgScoreByTeacherId(teacherId);
+        return Result.success(avg != null ? avg : 0.0);
+    }
+
     @GetMapping("/check/{courseId}")
     public Result<TeacherEvaluation> check(@PathVariable Integer courseId, HttpServletRequest request) {
         String studentId = getCurrentUsername(request);

@@ -19,7 +19,7 @@
         </el-form>
       </div>
 
-      <el-table :data="list" border class="crud-table" stripe>
+      <el-table :data="list" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
         <el-table-column prop="courseName" label="课程名" width="180" />
         <el-table-column prop="teacherName" label="授课教师" width="120" />
         <el-table-column prop="collegeName" label="开课学院" min-width="150" />
@@ -64,7 +64,7 @@
             </el-form-item>
           </el-form>
         </div>
-        <el-table :data="availableCourses" border class="crud-table" stripe>
+        <el-table :data="availableCourses" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
           <el-table-column prop="courseName" label="课程名" min-width="160" />
           <el-table-column prop="teacherName" label="授课教师" min-width="100" />
           <el-table-column prop="collegeName" label="开课学院" min-width="140" />
@@ -89,7 +89,7 @@
 
       <!-- 已选课程列表 -->
       <template v-if="studentTab === 'selected'">
-        <el-table :data="myCourses" border class="crud-table" stripe>
+        <el-table :data="myCourses" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
           <el-table-column prop="courseName" label="课程名" min-width="160" />
           <el-table-column prop="teacherName" label="授课教师" min-width="100" />
           <el-table-column prop="collegeName" label="开课学院" min-width="140" />
@@ -124,7 +124,7 @@
       </div>
 
       <template v-if="teacherTab === 'courses'">
-        <el-table :data="teacherCourses" border class="crud-table" stripe @row-click="onCourseClick">
+        <el-table :data="teacherCourses" border class="crud-table" stripe @row-click="onCourseClick" v-loading="loading" empty-text="暂无数据">
           <el-table-column prop="courseName" label="课程名" min-width="180" />
           <el-table-column prop="collegeName" label="开课学院" min-width="150" />
           <el-table-column prop="term" label="学期" width="120" />
@@ -145,7 +145,7 @@
           </el-button>
           <span class="course-label">{{ selectedCourse.courseName }} — 学生列表</span>
         </div>
-        <el-table :data="courseStudents" border class="crud-table" stripe>
+        <el-table :data="courseStudents" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
           <el-table-column prop="studentName" label="姓名" min-width="100" />
           <el-table-column prop="studentId" label="学号" width="120" />
           <el-table-column prop="clazzName" label="班级" min-width="150" />
@@ -157,87 +157,109 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from '@/utils/request'
 import CourseForm from './components/CourseForm.vue'
+import type { College, Course, Score, Student } from '@/types/models'
 
-const userRole = ref(sessionStorage.getItem('user') ? JSON.parse(sessionStorage.getItem('user')).role : 'admin')
+const userRole = ref(sessionStorage.getItem('user') ? JSON.parse(sessionStorage.getItem('user') || '{}').role : 'admin')
 
 // ===================== Admin state =====================
-const pageNum = ref(1), pageSize = ref(10), total = ref(0), list = ref([])
+const pageNum = ref(1), pageSize = ref(10), total = ref(0), list = ref<Course[]>([])
+const loading = ref(false)
 const dialogVisible = ref(false), formRef = ref()
 const query = reactive({ courseName: '', teacherName: '', teacherId: '', collegeId: null, credit: null, classHour: null, maxStudent: null })
-const collegeList = ref([])
+const collegeList = ref<College[]>([])
 
 // ===================== Student state =====================
 const studentTab = ref('available')
-const availableCourses = ref([])
-const myCourses = ref([])
-const selectedIds = ref([])
-const scoredCourseIds = ref([])
+const availableCourses = ref<Course[]>([])
+const myCourses = ref<Course[]>([])
+const selectedIds = ref<number[]>([])
+const scoredCourseIds = ref<number[]>([])
 const availPage = ref(1), availSize = ref(10), availTotal = ref(0)
 const courseQuery = reactive({ courseName: '' })
 
 // ===================== Teacher state =====================
 const teacherTab = ref('courses')
-const teacherCourses = ref([])
-const selectedCourse = ref(null)
-const courseStudents = ref([])
+const teacherCourses = ref<Course[]>([])
+const selectedCourse = ref<Course | null>(null)
+const courseStudents = ref<Student[]>([])
 
 // ===================== Admin methods =====================
 const getCollegeList = async () => {
-  try { const res = await axios.get('/api/college'); collegeList.value = res.data.list } catch {}
+  try { const res = await axios.get('/api/college'); collegeList.value = res.data.list } catch (e) { console.error('加载学院列表失败:', e) }
 }
 const getList = async () => {
-  const res = await axios.get('/api/course', { params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value } })
-  list.value = res.data.list; total.value = res.data.total
+  loading.value = true
+  try {
+    const res = await axios.get('/api/course', { params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value } })
+    list.value = res.data.list; total.value = res.data.total
+  } catch (e) {
+    console.error('加载课程列表失败:', e)
+  } finally {
+    loading.value = false
+  }
 }
 const resetQuery = () => { query.courseName = ''; query.teacherName = ''; query.teacherId = ''; query.collegeId = null; getList() }
 const handleAdd = () => { dialogVisible.value = true; formRef.value?.reset() }
-const handleEdit = (row) => { dialogVisible.value = true; formRef.value?.setData(row) }
-const handleDelete = async (id) => { await ElMessageBox.confirm('确定删除该课程？'); await axios.delete(`/api/course/${id}`); ElMessage.success('删除成功'); getList() }
+const handleEdit = (row: Course) => { dialogVisible.value = true; formRef.value?.setData(row) }
+const handleDelete = async (id: number) => { await ElMessageBox.confirm('确定删除该课程？'); await axios.delete(`/api/course/${id}`); ElMessage.success('删除成功'); getList() }
 
 // ===================== Student methods =====================
 const loadAvailableCourses = async () => {
-  const res = await axios.get('/api/course', {
-    params: { courseName: courseQuery.courseName || undefined, pageNum: availPage.value, pageSize: availSize.value }
-  })
-  availableCourses.value = res.data.list
-  availTotal.value = res.data.total
+  loading.value = true
+  try {
+    const res = await axios.get('/api/course', {
+      params: { courseName: courseQuery.courseName || undefined, pageNum: availPage.value, pageSize: availSize.value }
+    })
+    availableCourses.value = res.data.list
+    availTotal.value = res.data.total
+  } catch (e) {
+    console.error('加载可选课程失败:', e)
+  } finally {
+    loading.value = false
+  }
 }
 
 const loadMyCourseIds = async () => {
+  loading.value = true
   try {
     const res = await axios.get('/api/course-selection/my-ids')
     selectedIds.value = res.data || []
-  } catch {}
+  } catch (e) { console.error('加载已选课程失败:', e) } finally {
+    loading.value = false
+  }
 }
 
 const loadMyCourses = async () => {
+  loading.value = true
   try {
     const res = await axios.get('/api/course-selection/my')
     myCourses.value = res.data || []
     // 同时获取已出成绩的课程 ID
     const scoreRes = await axios.get('/api/score/my', { params: { pageSize: 100 } })
     const scores = scoreRes.data.list || []
-    scoredCourseIds.value = scores.map(s => s.courseId)
-  } catch {}
+    scoredCourseIds.value = scores.map((s: Score) => s.courseId)
+  } catch (e) { console.error('加载我的课程失败:', e) } finally {
+    loading.value = false
+  }
 }
 
-const handleSelect = async (courseId) => {
+const handleSelect = async (courseId: number) => {
   try {
     await axios.post(`/api/course-selection/select/${courseId}`)
     ElMessage.success('选课成功')
     loadMyCourseIds()
     loadAvailableCourses()
-  } catch (e) {
+  } catch (e: any) {
     ElMessage.error(e.response?.data?.msg || '选课失败')
   }
 }
 
-const handleDrop = async (courseId) => {
+const handleDrop = async (courseId: number) => {
   try {
     await ElMessageBox.confirm('确定退选该课程？')
     await axios.delete(`/api/course-selection/${courseId}`)
@@ -245,27 +267,33 @@ const handleDrop = async (courseId) => {
     loadMyCourses()
     loadMyCourseIds()
     loadAvailableCourses()
-  } catch {}
+  } catch (e) { console.error('退课失败:', e) }
 }
 
 // ===================== Teacher methods =====================
 const loadTeacherCourses = async () => {
+  loading.value = true
   try {
     const res = await axios.get('/api/course/my')
     teacherCourses.value = res.data || []
-  } catch {}
+  } catch (e) { console.error('加载我的课程失败:', e) } finally {
+    loading.value = false
+  }
 }
 
-const viewStudents = async (course) => {
+const viewStudents = async (course: Course) => {
   selectedCourse.value = course
   teacherTab.value = 'students'
+  loading.value = true
   try {
     const res = await axios.get(`/api/course/${course.id}/students`)
     courseStudents.value = res.data || []
-  } catch {}
+  } catch (e) { console.error('加载选课学生失败:', e) } finally {
+    loading.value = false
+  }
 }
 
-const onCourseClick = (row) => viewStudents(row)
+const onCourseClick = (row: Course) => viewStudents(row)
 
 // 切换"已选课程"标签时加载数据
 watch(studentTab, (tab) => {

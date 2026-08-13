@@ -18,7 +18,7 @@
         </el-form>
       </div>
 
-      <el-table :data="list" border class="crud-table" stripe>
+      <el-table :data="list" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
         <el-table-column prop="majorName" label="专业名称" width="180" />
         <el-table-column prop="collegeName" label="所属学院" min-width="150" />
         <el-table-column label="操作" width="160" fixed="right">
@@ -44,15 +44,17 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, onMounted ,nextTick} from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from '@/utils/request'
 import MajorForm from './components/MajorForm.vue'
+import type { College, Major } from '@/types/models'
 
-const pageNum = ref(1), pageSize = ref(10), total = ref(0), list = ref([])
+const pageNum = ref(1), pageSize = ref(10), total = ref(0), list = ref<Major[]>([])
+const loading = ref(false)
 const dialogVisible = ref(false), formRef = ref()
-const collegeList = ref([])
+const collegeList = ref<College[]>([])
 
 const query = reactive({
   majorName: '',
@@ -65,9 +67,16 @@ const getCollegeList = async () => {
 }
 
 const getList = async () => {
-  const res = await axios.get('/api/major', { params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value } })
-  list.value = res.data.list
-  total.value = res.data.total
+  loading.value = true
+  try {
+    const res = await axios.get('/api/major', { params: { ...query, pageNum: pageNum.value, pageSize: pageSize.value } })
+    list.value = res.data.list
+    total.value = res.data.total
+  } catch (e) {
+    console.error('加载专业列表失败:', e)
+  } finally {
+    loading.value = false
+  }
 }
 
 const resetQuery = () => {
@@ -77,10 +86,10 @@ const resetQuery = () => {
 }
 
 const handleAdd = () => { dialogVisible.value = true; formRef.value?.reset() }
-const handleEdit = (row) => { dialogVisible.value = true;
+const handleEdit = (row: Major) => { dialogVisible.value = true;
   nextTick(() => { formRef.value?.setData(row) }) }
 
-const handleDelete = async (id) => {
+const handleDelete = async (id: number) => {
   await ElMessageBox.confirm('确定删除？')
   await axios.delete(`/api/major/${id}`)
   ElMessage.success('删除成功')

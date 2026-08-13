@@ -12,6 +12,7 @@ import duyell.service.SysUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import utils.BusinessException;
 import utils.PageResult;
 
 import java.util.List;
@@ -59,11 +60,11 @@ public class SysUserServiceImpl implements SysUserService {
     public void delete(Integer id) {
         SysUser sysUser = sysUserMapper.selectById(id);
         if (sysUser == null) {
-            throw new RuntimeException("用户不存在");
+            throw new BusinessException("用户不存在");
         }
 
         if("admin".equals(sysUser.getRole())){
-            throw new RuntimeException("管理员账号不可删除");
+            throw new BusinessException("管理员账号不可删除");
         }
         sysUserMapper.deleteByIds(List.of(id));
     }
@@ -71,21 +72,26 @@ public class SysUserServiceImpl implements SysUserService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void update(SysUser sysUser) {
-        sysUserMapper.update(sysUser);
         String stu = "student";
         String tea = "teacher";
         if(stu.equals(sysUser.getRole())){
             Student s = studentMapper.selectStudentByStudentId(sysUser.getUsername());
+            if (s == null) {
+                throw new BusinessException("学生档案不存在，无法同步联系方式");
+            }
             s.setEmail(sysUser.getEmail());
             s.setPhone(sysUser.getPhone());
             studentMapper.updateStudent(s);
         } else if (tea.equals(sysUser.getRole())) {
             Teacher t = teacherMapper.selectTeacherByTeacherId(sysUser.getUsername());
+            if (t == null) {
+                throw new BusinessException("教师档案不存在，无法同步联系方式");
+            }
             t.setEmail(sysUser.getEmail());
             t.setPhone(sysUser.getPhone());
             teacherMapper.updateTeacher(t);
         }else{
-            throw new RuntimeException("管理员账号不可修改");
+            throw new BusinessException("管理员账号不可修改");
         }
         sysUserMapper.update(sysUser);
     }

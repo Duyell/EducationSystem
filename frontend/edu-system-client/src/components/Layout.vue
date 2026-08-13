@@ -165,7 +165,6 @@ const loadStatistics = async () => {
   if (loading.value) return
   
   loading.value = true
-  console.log("✅ 首页开始请求数据：/api/home/statistics") // 必打印
   try {
     const res = await axios.get('/api/home/statistics')
     studentTotal.value = res.data?.totalStudents ?? 0

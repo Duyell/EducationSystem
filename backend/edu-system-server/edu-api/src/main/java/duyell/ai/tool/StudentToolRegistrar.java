@@ -3,6 +3,7 @@ package duyell.ai.tool;
 import com.duyell.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import duyell.mapper.*;
+import duyell.service.CourseSelectionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
@@ -22,6 +23,7 @@ public class StudentToolRegistrar implements InitializingBean {
     private final StudentMapper studentMapper;
     private final ObjectMapper objectMapper;
     private final SysUserMapper sysUserMapper;
+    private final CourseSelectionService courseSelectionService;
 
     @Override
     public void afterPropertiesSet() {
@@ -30,18 +32,20 @@ public class StudentToolRegistrar implements InitializingBean {
                 noParams(),
                 (args, userId, role) -> {
                     List<CourseSelection> selections = courseSelectionMapper.selectByStudentId(userId);
+                    // IN 查询一次取出全部课程，避免 N+1
+                    List<Integer> courseIds = selections.stream()
+                            .map(CourseSelection::getCourseId)
+                            .toList();
+                    List<Course> courses = courseIds.isEmpty() ? List.of() : courseMapper.selectByIds(courseIds);
                     List<Map<String, Object>> result = new ArrayList<>();
-                    for (CourseSelection sel : selections) {
-                        Course course = courseMapper.selectCourseById(sel.getCourseId());
-                        if (course != null) {
-                            Map<String, Object> item = new LinkedHashMap<>();
-                            item.put("courseId", course.getId());
-                            item.put("courseName", course.getCourseName());
-                            item.put("teacherName", course.getTeacherName());
-                            item.put("term", course.getTerm());
-                            item.put("credit", course.getCredit());
-                            result.add(item);
-                        }
+                    for (Course course : courses) {
+                        Map<String, Object> item = new LinkedHashMap<>();
+                        item.put("courseId", course.getId());
+                        item.put("courseName", course.getCourseName());
+                        item.put("teacherName", course.getTeacherName());
+                        item.put("term", course.getTerm());
+                        item.put("credit", course.getCredit());
+                        result.add(item);
                     }
                     return objectMapper.writeValueAsString(result);
                 }
@@ -67,22 +71,13 @@ public class StudentToolRegistrar implements InitializingBean {
                 ),
                 (args, userId, role) -> {
                     Integer courseId = Integer.valueOf(args.get("courseId").toString());
-                    // 检查是否已选
-                    List<CourseSelection> existing = courseSelectionMapper.selectByStudentId(userId);
-                    boolean alreadySelected = existing.stream().anyMatch(s -> s.getCourseId().equals(courseId));
-                    if (alreadySelected) {
-                        return "{\"message\":\"该课程已选择，请勿重复选课\"}";
+                    // 复用选课服务：事务内完成查重、容量校验与并发控制
+                    try {
+                        courseSelectionService.select(courseId, userId);
+                        return "{\"message\":\"选课成功\"}";
+                    } catch (RuntimeException e) {
+                        return "{\"message\":\"" + e.getMessage() + "\"}";
                     }
-                    // 检查课程容量
-                    Course course = courseMapper.selectCourseById(courseId);
-                    if (course != null && course.getMaxStudent() != null) {
-                        List<CourseSelection> selections = courseSelectionMapper.selectByCourseId(courseId);
-                        if (selections.size() >= course.getMaxStudent()) {
-                            return "{\"message\":\"该课程名额已满\"}";
-                        }
-                    }
-                    courseSelectionMapper.add(courseId, userId);
-                    return "{\"message\":\"选课成功\"}";
                 }
         ));
 

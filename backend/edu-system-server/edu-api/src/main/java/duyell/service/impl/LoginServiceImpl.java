@@ -11,6 +11,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import utils.BusinessException;
 import utils.JwtUtil;
 
 import java.util.concurrent.TimeUnit;
@@ -33,24 +34,24 @@ public class LoginServiceImpl implements LoginService {
         // 1. 根据用户名查用户
         SysUser user = sysUserMapper.selectByUsername(loginReqDTO.getUsername());
         if (user == null) {
-            throw new RuntimeException("用户名不存在");
+            throw new BusinessException("用户名不存在");
         }
 
         // 2. 状态校验
         if (user.getStatus() == 0) {
-            throw new RuntimeException("账号已禁用");
+            throw new BusinessException("账号已禁用");
         }
 
         // 3. BCrypt 密码校验
         if (!passwordEncoder.matches(loginReqDTO.getPassword(), user.getPassword())) {
-            throw new RuntimeException("密码错误");
+            throw new BusinessException("密码错误");
         }
 
         // 4. 生成 token
         String token = jwtUtil.generateToken(user.getUsername(), user.getRole());
 
-        // 5. 存入 redis
-        redisTemplate.opsForValue().set("token:" + user.getUsername(), token, 7, TimeUnit.DAYS);
+        // 5. 存入 redis（TTL 与 JWT 有效期对齐，避免残留无用数据）
+        redisTemplate.opsForValue().set("token:" + user.getUsername(), token, jwtUtil.getExpirationMillis(), TimeUnit.MILLISECONDS);
 
         // 6. 返回
         LoginRespDTO resp = new LoginRespDTO();
@@ -75,7 +76,7 @@ public class LoginServiceImpl implements LoginService {
         String token = request.getHeader("token");
 
         if (!StringUtils.hasText(token)) {
-            throw new RuntimeException("未登录，无法登出");
+            throw new BusinessException("未登录，无法登出");
         }
 
         try {
@@ -87,7 +88,7 @@ public class LoginServiceImpl implements LoginService {
             redisTemplate.delete(redisKey);
 
         } catch (Exception e) {
-            throw new RuntimeException("token 无效，登出失败");
+            throw new BusinessException("token 无效，登出失败");
         }
     }
 

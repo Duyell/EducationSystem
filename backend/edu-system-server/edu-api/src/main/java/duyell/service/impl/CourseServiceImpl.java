@@ -61,4 +61,10 @@ public class CourseServiceImpl implements CourseService {
                 .collect(Collectors.toList());
         return studentMapper.selectByStudentIds(studentIds);
     }
+
+    @Override
+    public boolean isCourseOfTeacher(String teacherId, Integer courseId) {
+        Course course = courseMapper.selectCourseById(courseId);
+        return course != null && teacherId.equals(course.getTeacherId());
+    }
 }

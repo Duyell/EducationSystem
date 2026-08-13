@@ -37,6 +37,21 @@ public interface CourseMapper {
     Course selectCourseById(Integer id);
 
     /**
+     * 查询课程并加行锁（选课时串行化同一课程的并发请求，防止超卖）
+     * @param id 课程id
+     * @return 课程
+     */
+    @Select("select * from course where id = #{id} for update")
+    Course selectCourseByIdForUpdate(Integer id);
+
+    /**
+     * 根据ID集合批量查询课程（含教师/学院名，避免 N+1）
+     * @param ids 课程id集合
+     * @return 课程列表
+     */
+    List<Course> selectByIds(List<Integer> ids);
+
+    /**
      * 根据教师ID查询课程
      * @param teacherId 教师工号
      * @return 课程列表

@@ -94,7 +94,7 @@ const getTeacherList = async () => {
   try {
     const res = await axios.get('/api/teacher/all')
     teacherList.value = res.data || []
-  } catch {}
+  } catch (e) { console.error('加载教师列表失败:', e) }
 }
 
 const getCollegeList = async () => {

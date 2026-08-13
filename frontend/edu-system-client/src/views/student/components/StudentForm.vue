@@ -50,7 +50,7 @@ import { ref, onMounted } from 'vue'
 import axios from '@/utils/request'
 import { ElMessage } from 'element-plus'
 
-const emit = defineEmits(['success'])
+const emit = defineEmits(['success', 'close'])
 const formRef = ref()
 
 interface Clazz {

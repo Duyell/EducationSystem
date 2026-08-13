@@ -47,6 +47,14 @@ public interface ScoreMapper {
     Score select(Integer courseId, Integer studentId);
 
     /**
+     * 根据ID查询成绩
+     * @param id 成绩id
+     * @return 成绩
+     */
+    @Select("select * from score where id = #{id}")
+    Score selectById(Integer id);
+
+    /**
      * 分页查询
      * @param courseId 课程id
      * @param studentId 学生id

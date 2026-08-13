@@ -34,4 +34,9 @@ public class EvaluationServiceImpl implements EvaluationService {
     public TeacherEvaluation check(Integer courseId, String studentId) {
         return evaluationMapper.selectByCourseAndStudent(courseId, studentId);
     }
+
+    @Override
+    public Double avgScoreByTeacherId(String teacherId) {
+        return evaluationMapper.avgScoreByTeacherId(teacherId);
+    }
 }

@@ -33,6 +33,7 @@ public class TeacherServiceImpl implements TeacherService {
         return new PageResult<>(pageResult.getTotal(), list);
     }
 
+    @Transactional(rollbackFor = Exception.class)
     @Override
     public void add(Teacher teacher) {
         SysUser sysUser = new SysUser();
