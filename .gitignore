@@ -1,0 +1,41 @@
+# 依赖目录（注意：前端依赖安装在 frontend/ 根下，而 frontend/edu-system-client/.gitignore
+# 只能约束其自身目录，两者位置不匹配导致 frontend/node_modules 曾被误提交，故在仓库根统一声明）
+node_modules/
+
+# 构建产物
+dist/
+dist-ssr/
+target/
+*.tsbuildinfo
+
+# IDE 与编辑器
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# 日志
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 测试与覆盖率产物
+coverage/
+test-results/
+playwright-report/
+__screenshots__/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 本地环境覆盖（勿提交真实密钥；生产用环境变量注入）
+*.local
+application-local.yml
