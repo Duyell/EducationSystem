@@ -60,3 +60,14 @@ docker compose up -d --build
 - 后端已实现基于 JWT 的登录校验 + 角色鉴权（拦截器）+ 数据归属校验（教师仅能操作自己课程的分数）
 - 数据库迁移脚本：`docs/sql/2026-08-13-security-migration.sql`（唯一约束 + 索引，老库执行一次）
 - 更多历史改动见 `docs/开发记录.md`
+
+## 项目文档索引
+
+| 文档 | 内容 |
+|---|---|
+| `docs/Agent化升级计划.md` | 从 Tool-Calling Demo 升级到 Agent 系统的实施计划（现状差距、目标架构、里程碑与验收标准） |
+| `docs/AI模块架构文档.md` | AI 助手模块的架构与实现详解 |
+| `docs/技能使用规范.md` | 前端技能的路由与仲裁规范（`vue-best-practices` 与 `design-taste-frontend` 的职责切分、冲突裁决顺序、排除清单） |
+| `docs/开发记录.md` | 追加式开发日志（历史记录永不覆盖） |
+
+> **`.dsh/skills/`**：项目级 agent 技能目录（由 DSH 自动扫描）。其中 `edu-frontend-rules.md` 定义了本仓库前端工作的技能路由与仲裁规则，做前端改动前请先阅读。

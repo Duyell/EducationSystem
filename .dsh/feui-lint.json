@@ -1,0 +1,18 @@
+{
+  "_comment": "fe-ui-ts-linter 项目配置（EducationSystem）。与 .dsh/skills/edu-frontend-rules.md 配套使用。",
+  "rules": {
+    "ui/require-key": "off",
+    "ui/no-inline-style": "off",
+    "ts/no-explicit-any": "warn",
+    "ts/explicit-return-type": "off",
+    "react/no-direct-mutation": "off",
+    "react/empty-deps": "off"
+  },
+  "_rulesRationale": {
+    "ui/require-key": "误报源。该规则按 React 的 items.map(item => <li>) 模式实现，只认 .map() 且不区分「数组映射」与「列表渲染」，也完全不识别 Vue 的 v-for。本项目模板用 v-for 且均已带 :key，故关闭；Vue 侧改用本仓库 .dsh/lint-ai-view.cjs 里的 vue/v-for-require-key 规则（正则 <[^>]*v-for=(?![^>]*:key)）覆盖。",
+    "ui/no-inline-style": "已知例外，非疏漏。实测全项目确有 13 处内联 style（分布于 9 个 .vue），且全部是 Element Plus 表单控件的宽度控制（style=\"width:160px\" / \"width:100%\"）；el-select/el-input 的宽度是该组件族的惯用内联写法，改用 scoped class 需逐个包裹且可维护性更差。故对本项目关闭该规则。若将来要收紧，应先统一约定再全量改造，不要靠规则对既有代码刷噪音。",
+    "ts/no-explicit-any": "保留为 warn。新代码禁止新增 any（用 unknown + 类型收窄替代）；catch 中一律 catch (err: unknown)。注意本规则为纯正则匹配，会命中注释里出现的 any 字样（已实测），必要时改写注释措辞。",
+    "ts/explicit-return-type": "关闭。项目 tsconfig 未开启该约束，且既有代码风格普遍不标注。",
+    "react/*": "本项目为 Vue 3，React 专属规则不适用。"
+  }
+}
