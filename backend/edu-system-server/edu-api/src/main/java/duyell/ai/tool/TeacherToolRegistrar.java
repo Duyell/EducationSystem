@@ -28,8 +28,9 @@ public class TeacherToolRegistrar implements InitializingBean {
     @Override
     public void afterPropertiesSet() {
         registry.register("teacher", new ToolDefinition(
-                "get_my_courses", "获取当前教师教授的课程列表",
+                "get_my_courses", "我的授课课程", "获取当前教师教授的课程列表",
                 noParams(),
+                RiskLevel.READ_ONLY,
                 (args, userId, role) -> {
                     List<Course> courses = courseMapper.selectByTeacherId(userId);
                     return objectMapper.writeValueAsString(courses);
@@ -37,7 +38,7 @@ public class TeacherToolRegistrar implements InitializingBean {
         ));
 
         registry.register("teacher", new ToolDefinition(
-                "get_course_students", "查看某门课程的所有选课学生",
+                "get_course_students", "课程学生名单", "查看某门课程的所有选课学生",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -45,6 +46,7 @@ public class TeacherToolRegistrar implements InitializingBean {
                         ),
                         "required", List.of("courseId")
                 ),
+                RiskLevel.READ_ONLY,
                 (args, userId, role) -> {
                     Integer courseId = Integer.valueOf(args.get("courseId").toString());
                     // 归属校验：教师仅能查看自己课程的选课名单
@@ -64,7 +66,7 @@ public class TeacherToolRegistrar implements InitializingBean {
         ));
 
         registry.register("teacher", new ToolDefinition(
-                "enter_score", "录入学生成绩（平时成绩和考试成绩）",
+                "enter_score", "录入成绩", "录入学生成绩（平时成绩和考试成绩，总成绩=平时×0.4+考试×0.6）",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -75,6 +77,7 @@ public class TeacherToolRegistrar implements InitializingBean {
                         ),
                         "required", List.of("courseId", "studentId")
                 ),
+                RiskLevel.DANGEROUS,
                 (args, userId, role) -> {
                     Integer courseId = Integer.valueOf(args.get("courseId").toString());
                     // 归属校验：教师仅能为自己课程的选课学生录入成绩
@@ -111,7 +114,7 @@ public class TeacherToolRegistrar implements InitializingBean {
         ));
 
         registry.register("teacher", new ToolDefinition(
-                "update_score", "修改学生已有成绩",
+                "update_score", "修改成绩", "修改学生已有成绩（总成绩自动重算，提交后影响学业记录）",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -121,6 +124,7 @@ public class TeacherToolRegistrar implements InitializingBean {
                         ),
                         "required", List.of("id")
                 ),
+                RiskLevel.DANGEROUS,
                 (args, userId, role) -> {
                     Integer id = Integer.valueOf(args.get("id").toString());
 
@@ -157,8 +161,9 @@ public class TeacherToolRegistrar implements InitializingBean {
         ));
 
         registry.register("teacher", new ToolDefinition(
-                "get_my_evaluations", "查看学生对当前教师的教学评价",
+                "get_my_evaluations", "学生评价", "查看学生对当前教师的教学评价",
                 noParams(),
+                RiskLevel.READ_ONLY,
                 (args, userId, role) -> {
                     List<TeacherEvaluation> evaluations = evaluationMapper.list(null, null, userId);
                     return objectMapper.writeValueAsString(evaluations);

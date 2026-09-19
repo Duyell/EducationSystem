@@ -38,3 +38,15 @@ ai:
   base-url: ${AI_BASE_URL:https://api.deepseek.com}
   api-key: ${AI_API_KEY:}
   model: ${AI_MODEL:deepseek-v4-flash}
+  confirmation:
+    # 危险操作（选课/退课/录成绩/改成绩/教学评价）需用户在前端确认后才执行
+    enabled: ${AI_CONFIRMATION_ENABLED:true}
+    # 待确认操作的 TTL，同时也是等待用户响应的超时时间（秒）
+    timeout-seconds: ${AI_CONFIRMATION_TIMEOUT_SECONDS:180}
+  limits:
+    # 每用户每分钟最多发起的对话次数（防止刷接口烧额度）
+    max-chats-per-minute: ${AI_MAX_CHATS_PER_MINUTE:10}
+    # 单次对话内最大工具调用轮数（防止模型陷入循环）
+    max-iterations: ${AI_MAX_ITERATIONS:5}
+    # 单次对话内最大工具调用总次数
+    max-tool-calls-per-chat: ${AI_MAX_TOOL_CALLS_PER_CHAT:20}

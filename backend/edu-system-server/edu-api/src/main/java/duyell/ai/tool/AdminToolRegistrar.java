@@ -25,11 +25,15 @@ public class AdminToolRegistrar implements InitializingBean {
     private final HomeService homeService;
     private final ObjectMapper objectMapper;
 
+    /** 管理员工具全部为只读查询，因此统一使用 READ_ONLY 风险等级 */
+    private static final RiskLevel READ_ONLY = RiskLevel.READ_ONLY;
+
     @Override
     public void afterPropertiesSet() {
         registry.register("admin", new ToolDefinition(
-                "get_statistics", "获取系统统计数据（学生数、教师数、课程数、班级数）",
+                "get_statistics", "系统统计", "获取系统统计数据（学生数、教师数、课程数、班级数）",
                 noParams(),
+                READ_ONLY,
                 (args, userId, role) -> {
                     Map<String, Object> stats = homeService.getStatistics();
                     return objectMapper.writeValueAsString(stats);
@@ -37,14 +41,17 @@ public class AdminToolRegistrar implements InitializingBean {
         ));
 
         registry.register("admin", new ToolDefinition(
-                "list_users", "查询系统用户列表",
+                "list_users", "用户列表", "查询系统用户列表",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
-                                "role", Map.of("type", "string", "description", "筛选角色（admin/teacher/student，可选）"),
+                                "role", Map.of("type", "string",
+                                        "enum", List.of("admin", "teacher", "student"),
+                                        "description", "筛选角色（admin/teacher/student，可选）"),
                                 "username", Map.of("type", "string", "description", "用户名关键词搜索（可选）")
                         )
                 ),
+                READ_ONLY,
                 (args, userId, role) -> {
                     String roleFilter = (String) args.getOrDefault("role", null);
                     String username = (String) args.getOrDefault("username", null);
@@ -56,7 +63,7 @@ public class AdminToolRegistrar implements InitializingBean {
         ));
 
         registry.register("admin", new ToolDefinition(
-                "list_students", "查询学生列表",
+                "list_students", "学生列表", "查询学生列表",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -64,6 +71,7 @@ public class AdminToolRegistrar implements InitializingBean {
                                 "studentId", Map.of("type", "string", "description", "学生学号搜索（可选）")
                         )
                 ),
+                READ_ONLY,
                 (args, userId, role) -> {
                     String studentName = (String) args.getOrDefault("studentName", null);
                     String studentId = (String) args.getOrDefault("studentId", null);
@@ -74,7 +82,7 @@ public class AdminToolRegistrar implements InitializingBean {
         ));
 
         registry.register("admin", new ToolDefinition(
-                "list_teachers", "查询教师列表",
+                "list_teachers", "教师列表", "查询教师列表",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -82,6 +90,7 @@ public class AdminToolRegistrar implements InitializingBean {
                                 "teacherId", Map.of("type", "string", "description", "教师工号搜索（可选）")
                         )
                 ),
+                READ_ONLY,
                 (args, userId, role) -> {
                     String teacherName = (String) args.getOrDefault("teacherName", null);
                     String teacherId = (String) args.getOrDefault("teacherId", null);
@@ -92,13 +101,14 @@ public class AdminToolRegistrar implements InitializingBean {
         ));
 
         registry.register("admin", new ToolDefinition(
-                "list_courses", "查询课程列表",
+                "list_courses", "课程列表", "查询课程列表",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
                                 "courseName", Map.of("type", "string", "description", "课程名称搜索（可选）")
                         )
                 ),
+                READ_ONLY,
                 (args, userId, role) -> {
                     String courseName = (String) args.getOrDefault("courseName", null);
                     List<Course> courses = courseMapper.list(courseName, null, null, null, null, null, null);
@@ -108,8 +118,9 @@ public class AdminToolRegistrar implements InitializingBean {
         ));
 
         registry.register("admin", new ToolDefinition(
-                "list_colleges", "查询所有学院列表",
+                "list_colleges", "学院列表", "查询所有学院列表",
                 noParams(),
+                READ_ONLY,
                 (args, userId, role) -> {
                     List<College> colleges = collegeMapper.list(null);
                     return objectMapper.writeValueAsString(colleges);
@@ -117,8 +128,9 @@ public class AdminToolRegistrar implements InitializingBean {
         ));
 
         registry.register("admin", new ToolDefinition(
-                "list_majors", "查询所有专业列表",
+                "list_majors", "专业列表", "查询所有专业列表",
                 noParams(),
+                READ_ONLY,
                 (args, userId, role) -> {
                     List<Major> majors = majorMapper.list(null, null);
                     return objectMapper.writeValueAsString(majors);
@@ -126,8 +138,9 @@ public class AdminToolRegistrar implements InitializingBean {
         ));
 
         registry.register("admin", new ToolDefinition(
-                "list_classes", "查询所有班级列表",
+                "list_classes", "班级列表", "查询所有班级列表",
                 noParams(),
+                READ_ONLY,
                 (args, userId, role) -> {
                     List<Clazz> classes = clazzMapper.list(null, null, null, null);
                     return objectMapper.writeValueAsString(classes);

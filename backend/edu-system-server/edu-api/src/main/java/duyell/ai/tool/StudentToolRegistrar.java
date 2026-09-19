@@ -28,8 +28,9 @@ public class StudentToolRegistrar implements InitializingBean {
     @Override
     public void afterPropertiesSet() {
         registry.register("student", new ToolDefinition(
-                "get_my_courses", "获取当前学生已选的课程列表",
+                "get_my_courses", "我的已选课程", "获取当前学生已选的课程列表",
                 noParams(),
+                RiskLevel.READ_ONLY,
                 (args, userId, role) -> {
                     List<CourseSelection> selections = courseSelectionMapper.selectByStudentId(userId);
                     // IN 查询一次取出全部课程，避免 N+1
@@ -52,8 +53,9 @@ public class StudentToolRegistrar implements InitializingBean {
         ));
 
         registry.register("student", new ToolDefinition(
-                "get_my_scores", "获取当前学生的成绩",
+                "get_my_scores", "我的成绩", "获取当前学生的成绩",
                 noParams(),
+                RiskLevel.READ_ONLY,
                 (args, userId, role) -> {
                     List<Score> scores = scoreMapper.list(null, Integer.valueOf(userId), null);
                     return objectMapper.writeValueAsString(scores);
@@ -61,7 +63,7 @@ public class StudentToolRegistrar implements InitializingBean {
         ));
 
         registry.register("student", new ToolDefinition(
-                "select_course", "学生选课，添加课程到已选列表",
+                "select_course", "选课", "学生选课，添加课程到已选列表",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -69,6 +71,7 @@ public class StudentToolRegistrar implements InitializingBean {
                         ),
                         "required", List.of("courseId")
                 ),
+                RiskLevel.DANGEROUS,
                 (args, userId, role) -> {
                     Integer courseId = Integer.valueOf(args.get("courseId").toString());
                     // 复用选课服务：事务内完成查重、容量校验与并发控制
@@ -82,7 +85,7 @@ public class StudentToolRegistrar implements InitializingBean {
         ));
 
         registry.register("student", new ToolDefinition(
-                "drop_course", "学生退课，从已选列表中移除课程",
+                "drop_course", "退课", "学生退课，从已选列表中移除课程（可通过重新选课恢复）",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -90,6 +93,7 @@ public class StudentToolRegistrar implements InitializingBean {
                         ),
                         "required", List.of("courseId")
                 ),
+                RiskLevel.WRITE,
                 (args, userId, role) -> {
                     Integer courseId = Integer.valueOf(args.get("courseId").toString());
                     courseSelectionMapper.delete(courseId, userId);
@@ -98,13 +102,14 @@ public class StudentToolRegistrar implements InitializingBean {
         ));
 
         registry.register("student", new ToolDefinition(
-                "get_course_list", "查看所有可选课程的列表（支持按名称搜索）",
+                "get_course_list", "可选课程列表", "查看所有可选课程的列表（支持按名称搜索）",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
                                 "courseName", Map.of("type", "string", "description", "课程名称（可选，用于搜索）")
                         )
                 ),
+                RiskLevel.READ_ONLY,
                 (args, userId, role) -> {
                     String courseName = (String) args.getOrDefault("courseName", null);
                     List<Course> courses = courseMapper.list(courseName, null, null, null, null, null, null);
@@ -113,17 +118,19 @@ public class StudentToolRegistrar implements InitializingBean {
         ));
 
         registry.register("student", new ToolDefinition(
-                "evaluate_teacher", "对某门课程的教师进行教学评价",
+                "evaluate_teacher", "教学评价", "对某门课程的教师进行教学评价（提交后不可修改）",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
                                 "courseId", Map.of("type", "integer", "description", "课程ID"),
                                 "teacherId", Map.of("type", "string", "description", "教师工号"),
-                                "score", Map.of("type", "integer", "description", "评分(1-100)"),
+                                "score", Map.of("type", "integer", "minimum", 1, "maximum", 100,
+                                        "description", "评分(1-100)"),
                                 "content", Map.of("type", "string", "description", "评价内容（可选）")
                         ),
                         "required", List.of("courseId", "teacherId", "score")
                 ),
+                RiskLevel.DANGEROUS,
                 (args, userId, role) -> {
                     Integer courseId = Integer.valueOf(args.get("courseId").toString());
                     String teacherId = (String) args.get("teacherId");
@@ -142,7 +149,7 @@ public class StudentToolRegistrar implements InitializingBean {
         ));
 
         registry.register("student", new ToolDefinition(
-                "check_evaluation", "检查某门课程是否已经评价过",
+                "check_evaluation", "评价状态检查", "检查某门课程是否已经评价过",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
@@ -150,6 +157,7 @@ public class StudentToolRegistrar implements InitializingBean {
                         ),
                         "required", List.of("courseId")
                 ),
+                RiskLevel.READ_ONLY,
                 (args, userId, role) -> {
                     Integer courseId = Integer.valueOf(args.get("courseId").toString());
                     TeacherEvaluation existing = evaluationMapper.selectByCourseAndStudent(courseId, userId);
@@ -161,8 +169,9 @@ public class StudentToolRegistrar implements InitializingBean {
         ));
 
         registry.register("student", new ToolDefinition(
-                "get_my_evaluations", "获取当前学生提交的所有教学评价",
+                "get_my_evaluations", "我的评价", "获取当前学生提交的所有教学评价",
                 noParams(),
+                RiskLevel.READ_ONLY,
                 (args, userId, role) -> {
                     List<TeacherEvaluation> evaluations = evaluationMapper.list(null, userId, null);
                     return objectMapper.writeValueAsString(evaluations);

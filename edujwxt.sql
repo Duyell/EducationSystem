@@ -240,4 +240,31 @@ CREATE TABLE `teacher_evaluation` (
   INDEX `idx_eval_teacher`(`teacher_id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
+-- ----------------------------
+-- Table structure for ai_tool_audit
+-- AI 工具调用审计日志（见 docs/sql/2026-09-19-ai-audit-migration.sql）
+-- ----------------------------
+DROP TABLE IF EXISTS `ai_tool_audit`;
+CREATE TABLE `ai_tool_audit`  (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `role` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `session_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `tool_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `risk_level` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `args_json` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
+  `result_json` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
+  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `error_msg` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
+  `confirm_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `request_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `duration_ms` bigint NULL DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_ai_audit_request`(`request_id` ASC) USING BTREE,
+  INDEX `idx_ai_audit_user`(`user_id` ASC, `created_at` ASC) USING BTREE,
+  INDEX `idx_ai_audit_tool`(`tool_name` ASC, `created_at` ASC) USING BTREE,
+  INDEX `idx_ai_audit_status`(`status` ASC, `created_at` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
 SET FOREIGN_KEY_CHECKS = 1;
