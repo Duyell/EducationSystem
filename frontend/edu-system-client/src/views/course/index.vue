@@ -158,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from '@/utils/request'
 import CourseForm from './components/CourseForm.vue'
@@ -254,8 +254,8 @@ const handleSelect = async (courseId: number) => {
     ElMessage.success('选课成功')
     loadMyCourseIds()
     loadAvailableCourses()
-  } catch (e: any) {
-    ElMessage.error(e.response?.data?.msg || '选课失败')
+  } catch {
+    // request.ts 拦截器已统一弹出错误提示，此处不重复提示
   }
 }
 

@@ -31,22 +31,12 @@
 import { ref } from 'vue'
 import axios from '@/utils/request'
 import { ElMessage } from 'element-plus'
-
-interface Score {
-  id: number
-  studentId: string
-  studentName: string
-  courseId: number
-  courseName: string
-  usualScore: number
-  examScore: number
-  totalScore: number
-}
+import type { Score } from '@/types/models'
 
 const emit = defineEmits(['success', 'close'])
 const formRef = ref()
 
-const form = ref({
+const form = ref<Score>({
   id: 0,
   studentId: '',
   studentName: '',
@@ -59,7 +49,7 @@ const form = ref({
 
 const rules = ref({})
 
-const setData = (row: any) => {
+const setData = (row: Score) => {
   form.value = { ...row }
 }
 

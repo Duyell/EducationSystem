@@ -84,7 +84,7 @@ const resetQuery = () => {
   getList()
 }
 
-const handleDelete = async (id: any) => {
+const handleDelete = async (id: number | string) => {
   try {
     await ElMessageBox.confirm('确定删除？')
     await axios.delete(`/api/user/${id}`)
@@ -98,7 +98,7 @@ const handleDelete = async (id: any) => {
   }
 }
 
-const handleStatusChange = async (row: { id: any; status: any }) => {
+const handleStatusChange = async (row: { id: number | string; status: number }) => {
   const oldStatus = row.status
   try {
     await axios.put(`/api/user/status/${row.id}`, { status: row.status })

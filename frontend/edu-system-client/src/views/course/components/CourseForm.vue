@@ -53,6 +53,7 @@
 import { ref, onMounted } from 'vue'
 import axios from '@/utils/request'
 import { ElMessage } from 'element-plus'
+import type { Course } from '@/types/models'
 
 interface Teacher {
   id: number
@@ -69,7 +70,7 @@ interface College {
 const emit = defineEmits(['success', 'close'])
 const formRef = ref()
 
-const form = ref({
+const form = ref<Course>({
   id: 0,
   courseName: '',
   teacherId: '',
@@ -102,7 +103,7 @@ const getCollegeList = async () => {
   collegeList.value = res.data.list
 }
 
-const setData = (row: any) => {
+const setData = (row: Course) => {
   form.value = { ...row }
 }
 

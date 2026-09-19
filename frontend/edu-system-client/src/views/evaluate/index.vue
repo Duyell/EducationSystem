@@ -67,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from '@/utils/request'
 import type { Course, EvaluableCourse, TeacherEvaluation } from '@/types/models'
@@ -116,8 +116,8 @@ const submitEvaluation = async (course: EvaluableCourse) => {
     })
     ElMessage.success('评价成功')
     course.evaluated = true
-  } catch (e: any) {
-    ElMessage.error(e.response?.data?.msg || '评价失败')
+  } catch {
+    // request.ts 拦截器已统一弹出错误提示，此处不重复提示
   }
 }
 

@@ -15,16 +15,12 @@
 import { ref } from 'vue'
 import axios from '@/utils/request'
 import { ElMessage } from 'element-plus'
-
-interface College {
-  id: number
-  collegeName: string
-}
+import type { College } from '@/types/models'
 
 const emit = defineEmits(['success', 'close'])
 const formRef = ref()
 
-const form = ref({
+const form = ref<College>({
   id: 0,
   collegeName: ''
 })
@@ -33,7 +29,7 @@ const rules = ref({
   collegeName: [{ required: true, message: '学院名称不能为空', trigger: 'blur' }]
 })
 
-const setData = (row: any) => {
+const setData = (row: College) => {
   form.value = { ...row }
 }
 

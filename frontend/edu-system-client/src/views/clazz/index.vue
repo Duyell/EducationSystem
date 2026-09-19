@@ -56,7 +56,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted,nextTick } from 'vue'
-import { ElFormItem, ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from '@/utils/request'
 import ClazzForm from './components/ClazzForm.vue'
 import type { Clazz, College, Major } from '@/types/models'

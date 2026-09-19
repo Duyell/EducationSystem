@@ -80,8 +80,9 @@ const handleLogin = async () => {
     ElMessage.success('登录成功')
 
     router.push('/index')
-  } catch (err: any) {
-    ElMessage.error('登录失败：' + (err.response?.data || '用户名或密码错误'))
+  } catch {
+    // request.ts 响应拦截器已统一弹出错误提示（业务 code!=200 / 401 / 403 / 网络错误），
+    // 此处不再重复提示；错误对象无需使用，故不加 any 标注。
   } finally {
     loading.value = false
   }

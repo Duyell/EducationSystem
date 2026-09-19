@@ -30,27 +30,16 @@
 import { ref, onMounted } from 'vue'
 import axios from '@/utils/request'
 import { ElMessage } from 'element-plus'
-
-interface Major {
-  id: number
-  majorName: string
-}
-
-interface Clazz {
-  id: number
-  clazzName: string
-  grade: string
-  majorId: number | string
-}
+import type { Clazz, Major } from '@/types/models'
 
 const emit = defineEmits(['success', 'close'])
 const formRef = ref()
 
-const form = ref({
+const form = ref<Clazz>({
   id: 0,
   clazzName: '',
-  grade: '',
-  majorId: ''
+  majorId: '',
+  grade: ''
 })
 
 const rules = ref({
@@ -65,7 +54,7 @@ const getMajorList = async () => {
   majorList.value = res.data.list
 }
 
-const setData = (row: any) => {
+const setData = (row: Clazz) => {
   form.value = { ...row }
 }
 

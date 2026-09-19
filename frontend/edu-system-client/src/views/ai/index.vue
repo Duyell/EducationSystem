@@ -61,6 +61,34 @@
             <el-icon :size="16"><WarningFilled /></el-icon>
             {{ msg.content }}
           </div>
+          <!-- 危险操作确认卡片（HITL）：确认前工具不会执行 -->
+          <div v-else-if="msg.type === 'confirm'" class="confirm-card">
+            <div class="confirm-head">
+              <el-icon :size="16" color="#FA8C16"><WarningFilled /></el-icon>
+              <span class="confirm-title">需要你确认：{{ msg.confirmTitle }}</span>
+            </div>
+            <div v-if="msg.confirmArgs && msg.confirmArgs.length" class="confirm-args">
+              <div v-for="item in msg.confirmArgs" :key="item.key" class="confirm-arg">
+                <span class="arg-key">{{ item.key }}</span>
+                <span class="arg-value">{{ item.value }}</span>
+              </div>
+            </div>
+            <div class="confirm-foot">
+              <template v-if="!msg.decided">
+                <el-button size="small" type="primary" @click="handleConfirm(msg, true)">
+                  确认执行
+                </el-button>
+                <el-button size="small" @click="handleConfirm(msg, false)">取消</el-button>
+              </template>
+              <el-tag v-else-if="msg.approved === true" size="small" type="success" effect="plain">
+                已确认执行
+              </el-tag>
+              <el-tag v-else-if="msg.expired" size="small" type="warning" effect="plain">
+                已超时，操作未执行
+              </el-tag>
+              <el-tag v-else size="small" type="info" effect="plain">已取消</el-tag>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -122,10 +150,38 @@ marked.setOptions({
   gfm: true,
 })
 
+type ConfirmArg = { key: string; value: string }
+
+/**
+ * 后端 SSE 事件协议（与 AiChatService 发送的 Map 一一对应）。
+ * 集中定义可保证前后端语义一致，避免 `if (type === ...)` 的判断散落各处。
+ */
+type AgentEvent =
+  | { type: 'token'; content: string }
+  | { type: 'status'; content: string }
+  | { type: 'error'; content: string }
+  | {
+      type: 'confirm'
+      confirmId: string
+      tool?: string
+      displayName?: string
+      args?: Record<string, unknown>
+      timeoutSeconds?: number
+    }
+  | { type: 'confirm_result'; confirmId: string; approved?: boolean; expired?: boolean }
+  | { type: 'done' }
+
 interface ChatMsg {
   role: 'user' | 'assistant' | 'system'
-  type: 'text' | 'token' | 'status' | 'error'
+  type: 'text' | 'token' | 'status' | 'error' | 'confirm'
   content: string
+  /** 危险操作确认卡片携带的字段（type === 'confirm' 时有效） */
+  confirmId?: string
+  confirmTitle?: string
+  confirmArgs?: ConfirmArg[]
+  decided?: boolean
+  approved?: boolean
+  expired?: boolean
 }
 
 const messages = ref<ChatMsg[]>([])
@@ -135,7 +191,13 @@ const messagesRef = ref<HTMLElement | null>(null)
 const abortController = ref<AbortController | null>(null)
 const aiModel = ref('')
 const userRole = ref('')
-let currentAssistantMsg = ref<ChatMsg | null>(null)
+const currentAssistantMsg = ref<ChatMsg | null>(null)
+/** 当前等待用户决定的确认卡片（同一时刻只允许一个） */
+const pendingConfirm = ref<ChatMsg | null>(null)
+
+/** 从 catch 到的 unknown 中安全提取消息（规范要求禁止在 catch 中标注 any） */
+const errorMessage = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err)
 
 const userInfo = computed(() => {
   try {
@@ -260,8 +322,8 @@ const sendMessage = async (text: string) => {
       }
     }
 
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AbortError') {
       messages.value.push({
         role: 'assistant',
         type: 'status',
@@ -271,17 +333,19 @@ const sendMessage = async (text: string) => {
       messages.value.push({
         role: 'assistant',
         type: 'error',
-        content: '连接失败: ' + (err.message || '未知错误'),
+        content: '连接失败: ' + (errorMessage(err) || '未知错误'),
       })
     }
   } finally {
     loading.value = false
     abortController.value = null
+    // 流意外中断时，未决的确认卡片不能继续可点（后端已放弃该操作）
+    expirePendingConfirm()
     scrollToBottom()
   }
 }
 
-const handleSseEvent = (data: any) => {
+const handleSseEvent = (data: AgentEvent) => {
   const type = data.type
 
   switch (type) {
@@ -311,21 +375,88 @@ const handleSseEvent = (data: any) => {
       scrollToBottom()
       break
 
+    case 'confirm':
+      // 危险操作确认卡片：后端已挂起 Agent，等待用户在前端确认后才执行
+      pendingConfirm.value = {
+        role: 'assistant',
+        type: 'confirm',
+        content: '',
+        confirmId: data.confirmId,
+        confirmTitle: data.displayName || data.tool || '未知操作',
+        confirmArgs: Object.entries(data.args ?? {}).map(([key, value]) => ({
+          key,
+          value: value === null || value === undefined ? '' : String(value),
+        })),
+        decided: false,
+      }
+      messages.value.push(pendingConfirm.value)
+      scrollToBottom()
+      break
+
+    case 'confirm_result':
+      // 结果确认（取消/超时/其他端先行处理）
+      if (pendingConfirm.value && pendingConfirm.value.confirmId === data.confirmId) {
+        pendingConfirm.value.decided = true
+        pendingConfirm.value.approved = data.approved === true
+        pendingConfirm.value.expired = data.expired === true
+      }
+      break
+
     case 'done':
       // Convert the last token message to text type
       if (currentAssistantMsg.value) {
         currentAssistantMsg.value.type = 'text'
       }
       currentAssistantMsg.value = null
+      expirePendingConfirm()
       scrollToBottom()
       break
   }
 }
 
+/** 流结束/异常时收尾未决的确认卡片，避免留下点不动的可点按钮 */
+const expirePendingConfirm = () => {
+  if (pendingConfirm.value && !pendingConfirm.value.decided) {
+    pendingConfirm.value.decided = true
+    pendingConfirm.value.expired = true
+  }
+  pendingConfirm.value = null
+}
+
+/** 用户点击确认/取消，唤醒后端挂起的 Agent 线程 */
+const handleConfirm = async (msg: ChatMsg, approved: boolean) => {
+  if (!msg.confirmId || msg.decided) return
+  msg.decided = true
+  msg.approved = approved
+  // 卡片不再等待用户输入
+  if (pendingConfirm.value === msg) {
+    pendingConfirm.value = null
+  }
+  try {
+    await request.post('/api/ai/confirm', { confirmId: msg.confirmId, approved })
+    // 后端收到决定后会继续 SSE 流，后续回复由 handleSseEvent 处理
+  } catch (err: unknown) {
+    msg.decided = true
+    msg.approved = undefined
+    messages.value.push({
+      role: 'assistant',
+      type: 'error',
+      content: '确认失败：' + (errorMessage(err) || '该操作可能已失效，请重新发起'),
+    })
+    scrollToBottom()
+  }
+}
+
+/** GET /ai/config 的返回体（request.ts 拦截器已解包为 { code, msg, data }） */
+interface AiConfigResp {
+  code?: string
+  data?: { configured?: boolean; model?: string }
+}
+
 onMounted(async () => {
   userRole.value = userInfo.value.role || 'student'
   try {
-    const res: any = await request.get('/api/ai/config')
+    const res = (await request.get('/api/ai/config')) as unknown as AiConfigResp
     if (res.code === '200' && res.data) {
       if (res.data.configured) {
         aiModel.value = res.data.model || ''
@@ -479,6 +610,55 @@ onMounted(async () => {
   align-items: center;
   gap: 6px;
   color: #ff4d4f;
+}
+
+/* 危险操作确认卡片 */
+.confirm-card {
+  min-width: 260px;
+  padding: 12px 14px;
+  border: 1px solid #ffd591;
+  border-left: 3px solid #fa8c16;
+  border-radius: 6px;
+  background: #fffbf5;
+}
+.confirm-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ad4e00;
+}
+.confirm-title {
+  line-height: 1.4;
+}
+.confirm-args {
+  margin: 10px 0 4px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #fff;
+  border: 1px solid #ffe7ba;
+  font-size: 13px;
+}
+.confirm-arg {
+  display: flex;
+  gap: 8px;
+  line-height: 1.8;
+}
+.arg-key {
+  flex-shrink: 0;
+  min-width: 76px;
+  color: #8c8c8c;
+}
+.arg-value {
+  color: #333;
+  word-break: break-all;
+}
+.confirm-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 /* Text message */
