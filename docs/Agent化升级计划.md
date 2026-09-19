@@ -37,6 +37,97 @@
 
 ---
 
+## 接续开发指南（每次继续本项目先读这一节）
+
+> 本节为「下次开工」而写：环境怎么起、怎么验证、哪些事在等用户确认。
+> 更新到 2026-09-19，阶段 0 完成并已推送 `origin/main`。
+
+### 0. 快速定位
+
+| 想了解 | 看哪里 |
+|---|---|
+| 计划本身、里程碑与验收标准 | 本文档第三～七节 |
+| 已经做了什么、踩过什么坑 | `docs/开发记录.md`（追加式，倒序） |
+| 前端该按什么规范写 | `docs/技能使用规范.md` + 项目级技能 `.dsh/skills/edu-frontend-rules.md` |
+| 现有 AI 模块怎么运作 | `docs/AI模块架构文档.md`（注意：**尚未更新到阶段 0 之后的状态**） |
+
+### 1. 环境启动（本机 Windows）
+
+本项目 Redis 是**硬依赖**（登录 token 校验也走 Redis），不启动则登录即失败。
+
+```powershell
+# ① Redis（无则从 D:\Redis\5.0.14.1 启动）
+D:\Redis\5.0.14.1\redis-server.exe .dsh\redis-dev.conf
+
+# ② 后端：离线环境注意——`mvn install` 不可用（缺 maven-install-plugin 依赖），
+#    必须先 package 出 fat jar 再用 java -jar 启动
+cd backend\edu-system-server
+mvn -o -B package -DskipTests
+java -jar edu-api\target\edu-api-0.0.1-SNAPSHOT.jar
+# ⚠️ 重建前必须先停掉正在运行的后端：Windows 文件锁会让 repackage 失败
+
+# ③ 前端
+cd frontend\edu-system-client
+npm run dev        # 开发（端口 5173，代理到 8080）
+npm run type-check # 类型检查
+```
+
+外部依赖现状：MySQL 8.4.7（库 `edujwxt`，10 张表 + 种子数据 + 安全约束齐全）、Redis 5.0.14.1。
+**`AI_API_KEY` 未配置**，因此 `/ai/chat` 只能验证到"明确报错"这一层，无法真实调模型。
+
+### 2. 当前验证方式（改完代码跑这三样）
+
+```powershell
+# 后端单测（39 项；含真实 MySQL 审计落库与真实 Redis 限流）
+cd backend\edu-system-server; mvn -o -B test -pl edu-api -am
+
+# 端到端安全断言（16 项；需 Redis + 后端已启动）
+.\.dsh\verify-m1.ps1
+
+# 前端：类型检查 + linter 全量
+cd frontend\edu-system-client; npm run type-check
+node .dsh\lint-ai-view.cjs <某个.vue>     # 或遍历 22 个 .vue
+```
+
+**两条纪律**（都是踩过坑换来的，见开发记录）：
+- 只要测试会写真实持久化存储（MySQL/Redis），**必须连续跑两次确认结果一致**——只跑一次绿过不算数。
+- 测试失败**先确认外部依赖在线**（Redis 停止曾被误判为限流逻辑 bug）。
+
+### 3. 阶段性成果（供讲解用，非路线图）
+
+这些是已经**做出来并且验证过**的能力，不是计划：
+
+- **工具调用安全边界的完整闭环**：21 个工具按角色白名单隔离 → 参数 Schema 校验 → 风险分级 →
+  危险操作挂起等人工确认 → 确认令牌服务端持有 → 全程审计留痕 → 幂等保护 → 频次与调用量限流。
+  这条链路上每一环都有测试，其中 6 条断言是通过真实 HTTP 打真实后端验证的。
+- **审计表 `ai_tool_audit`**：四类以上状态、可变宽截断防御、失败不外抛但不静默。
+- **可复用的验证脚本** `.dsh/verify-m1.ps1`：16 项断言，含跨用户确认被拒、限流边界精确命中。
+- **仓库卫生**：`node_modules` 已移出版本库（已跟踪文件 12,143 → 170）。
+
+### 4. 待用户确认的事项（不要在未确认时擅自处理）
+
+| 事项 | 现状 | 需要用户决定什么 |
+|---|---|---|
+| `sendSse()` 既有缺陷 | 只捕获 `IOException`，客户端中途断开时 `IllegalStateException` 冒泡成误导日志。已核对非本次引入 | 是否现在修（修法简单：catch 一并捕获） |
+| 前端 `frontend/.vscode/` | 未跟踪，`frontend/.gitignore` 已含 `.vscode/*` | 是否需要提交（通常不需要） |
+| M2 拆分 `views/ai/index.vue` | 已达 752 行，按 `vue-best-practices` 的客观标准已构成 mega component | 是否在 M2 一并拆组件 |
+| 真实 LLM 验证 | 缺 `AI_API_KEY` | 是否提供 Key 补一次真实对话验证 |
+
+### 5. 下一步：M2 框架化迁移（计划下一阶段）
+
+M2 目标（详见第三节阶段 1）与**开工入口建议**：
+1. **先做最小的 Spring AI 接入验证**：新建 `edu-agent` 模块 → 接 `spring-ai-bom` → 迁移一个工具（如 `get_my_courses`）
+   到 `@Tool` 形态 → 确认能跑通，**再**批量迁移其余 20 个。不要一次性改完 21 个工具。
+2. **`ChatMemory` + Redis 多轮记忆**：当前每轮只构造 `[system, user]` 两条消息、没有 sessionId，
+   这是与"真 Agent"差距最大的一项（见第一节差距表）。
+3. **会话管理 API + 前端会话侧栏**，同时按 `vue-best-practices` 拆分 `views/ai/index.vue`。
+4. **注意**：引入 Spring AI 后 `AiChatService` 的手写循环与 `OpenAiClient` 会逐步被替代，
+   迁移期间应保留旧实现一个版本周期作为回归对照（阶段 1 计划里已写明）。
+
+**动手前先读**：`docs/技能使用规范.md`（若涉及前端）、本节第 2 节的三条验证方式。
+
+---
+
 ## 一、现状盘点
 
 ### 1.1 已有资产（不要推倒重来）
