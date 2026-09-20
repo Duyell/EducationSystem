@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="duyell.mapper.ClassTimeMapper">
+
+    <!--
+      冲突检测的公共列与连接。学期只能来自 course.term —— class_time 刻意不冗余 term，
+      否则 course.term 变更后课表会静默失真。
+    -->
+    <sql id="joinedColumns">
+        ct.id, ct.course_id, ct.weekday, ct.start_period, ct.end_period,
+        ct.start_week, ct.end_week, ct.room_id,
+        c.course_code as courseCode, c.course_name as courseName,
+        c.teacher_id as teacherId, c.term as term, c.max_student as maxStudent,
+        t.teacher_name as teacherName, r.room_name as roomName, r.capacity as roomCapacity
+    </sql>
+
+    <sql id="joinedTables">
+        from class_time ct
+        join course c on ct.course_id = c.id
+        left join teacher t on c.teacher_id = t.teacher_id
+        left join room r on ct.room_id = r.id
+    </sql>
+
+    <select id="listByCourse" resultType="com.duyell.ClassTime">
+        select <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        where ct.course_id = #{courseId}
+        order by ct.weekday, ct.start_period
+    </select>
+
+    <select id="listByTeacherAndTerm" resultType="com.duyell.ClassTime">
+        select <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        where c.teacher_id = #{teacherId}
+        <if test="term != null and term != ''">
+            and c.term = #{term}
+        </if>
+        order by ct.weekday, ct.start_period
+    </select>
+
+    <select id="listAll" resultType="com.duyell.ClassTime">
+        select <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        <where>
+            <if test="term != null and term != ''">
+                and c.term = #{term}
+            </if>
+            <if test="weekday != null">
+                and ct.weekday = #{weekday}
+            </if>
+        </where>
+        order by ct.weekday, ct.start_period, c.course_code
+    </select>
+
+    <!--
+      ⚠️ 这里是全项目的冲突判据，只此一处（教室推荐那边的 not exists 必须与之一致）。
+
+      区间重叠的标准判据（闭区间）：a.start <= b.end AND a.end >= b.start
+        · 第 1-2 节 vs 第 3-4 节 → 2 <= 3 false → **不冲突**（相接不算）
+        · 第 3-4 节 vs 第 4-5 节 → 4 <= 4 true 且 4 >= 4 true → **冲突**（第 4 节重叠）
+      绝不能写成 ct.start_period < #{endPeriod}，那会把"相接"误判成冲突。
+
+      周次同理：第 1-16 周 vs 第 17-18 周不冲突；第 1-16 周 vs 第 9-16 周冲突。
+    -->
+    <select id="selectConflicts" resultType="com.duyell.ClassTime">
+        select <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        where c.term = #{term}
+          and ct.weekday = #{weekday}
+          and ct.start_period &lt;= #{endPeriod} and ct.end_period &gt;= #{startPeriod}
+          and ct.start_week &lt;= #{endWeek} and ct.end_week &gt;= #{startWeek}
+        <if test="teacherId != null and teacherId != ''">
+            and c.teacher_id = #{teacherId}
+        </if>
+        <if test="roomId != null">
+            and ct.room_id = #{roomId}
+        </if>
+        <if test="excludeCourseId != null">
+            and ct.course_id != #{excludeCourseId}
+        </if>
+        order by ct.weekday, ct.start_period
+    </select>
+
+    <select id="listOccupiedRoomIds" resultType="java.lang.Integer">
+        select distinct ct.room_id
+        <include refid="joinedTables"/>
+        where c.term = #{term}
+          and ct.weekday = #{weekday}
+          and ct.start_period &lt;= #{endPeriod} and ct.end_period &gt;= #{startPeriod}
+          and ct.start_week &lt;= #{endWeek} and ct.end_week &gt;= #{startWeek}
+          and ct.room_id is not null
+        <if test="excludeCourseId != null">
+            and ct.course_id != #{excludeCourseId}
+        </if>
+    </select>
+
+</mapper>

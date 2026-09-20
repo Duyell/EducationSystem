@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="duyell.mapper.RoomMapper">
+
+    <select id="list" resultType="com.duyell.Room">
+        select * from room
+        <where>
+            <if test="building != null and building != ''">
+                and building = #{building}
+            </if>
+            <if test="roomType != null and roomType != ''">
+                and room_type = #{roomType}
+            </if>
+            <if test="minCapacity != null">
+                and capacity &gt;= #{minCapacity}
+            </if>
+            <if test="status != null">
+                and status = #{status}
+            </if>
+        </where>
+        order by building, floor_no, room_no
+    </select>
+
+    <update id="update">
+        update room
+        <set>
+            <if test="building != null and building != ''">
+                building = #{building},
+            </if>
+            <if test="floorNo != null">
+                floor_no = #{floorNo},
+            </if>
+            <if test="roomNo != null and roomNo != ''">
+                room_no = #{roomNo},
+            </if>
+            <if test="roomName != null and roomName != ''">
+                room_name = #{roomName},
+            </if>
+            <if test="capacity != null">
+                capacity = #{capacity},
+            </if>
+            <if test="roomType != null and roomType != ''">
+                room_type = #{roomType},
+            </if>
+            <if test="status != null">
+                status = #{status},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+
+    <!--
+      时段空闲的教室。
+
+      ⚠️ 重叠判据必须与 ClassTimeMapper.selectConflicts 保持一致（闭区间）：
+         ct.start_period <= 需求end AND ct.end_period >= 需求start
+      写成 < 就成了「相接也算冲突」，会把第 3-4 节与第 1-2 节误判为冲突。
+    -->
+    <select id="pickFreeRooms" resultType="com.duyell.Room">
+        select r.*
+        from room r
+        where r.status = 1
+        <if test="minCapacity != null">
+            and r.capacity &gt;= #{minCapacity}
+        </if>
+        <if test="roomType != null and roomType != ''">
+            and r.room_type = #{roomType}
+        </if>
+        and not exists (
+            select 1
+            from class_time ct
+            join course c on ct.course_id = c.id
+            where ct.room_id = r.id
+              and c.term = #{term}
+              and ct.weekday = #{weekday}
+              and ct.start_period &lt;= #{endPeriod} and ct.end_period &gt;= #{startPeriod}
+              and ct.start_week &lt;= #{endWeek} and ct.end_week &gt;= #{startWeek}
+            <if test="excludeCourseId != null">
+                and ct.course_id != #{excludeCourseId}
+            </if>
+        )
+        <!--
+          排序：容量升序（最贴近需求优先），同容量按楼栋/楼层/房间号 ——
+          **刻意不按 id**：id 是自增的，批量生成时插入顺序不保证，
+          新装库与现有库的 id 会不同，按 id 排序会让"推荐结果"随安装而变、测试无法稳定断言。
+          按名字排序在任何库上都是同一个结果。
+        -->
+        order by r.capacity asc, r.building asc, r.floor_no asc, r.room_no asc
+        limit #{limit}
+    </select>
+
+</mapper>

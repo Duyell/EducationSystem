@@ -29,6 +29,7 @@ __screenshots__/
 
 # 校验脚本的运行时诊断输出（每次运行都会重写，不入库）
 .dsh/verify-p1-ui.diag.json
+.dsh/verify-p2-ui.diag.json
 
 # 系统文件
 .DS_Store

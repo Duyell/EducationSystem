@@ -20,6 +20,13 @@
       </div>
 
       <el-table :data="list" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
+        <!-- 课程代码是培养计划/已修判定/补考关联的唯一依据，缺失的课在判断类功能里等于不存在，故显式标红 -->
+        <el-table-column label="课程代码" width="110">
+          <template #default="{ row }">
+            <el-tag v-if="row.courseCode" size="small" effect="plain">{{ row.courseCode }}</el-tag>
+            <el-tag v-else type="danger" size="small" effect="plain">未设置</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="courseName" label="课程名" width="180" />
         <el-table-column prop="teacherName" label="授课教师" width="120" />
         <el-table-column prop="collegeName" label="开课学院" min-width="150" />

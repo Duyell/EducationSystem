@@ -87,6 +87,24 @@ const routes = [
         path: 'training-plan-manage',
         component: () => import('../views/training-plan-manage/index.vue'),
         meta: { roles: ['admin'] }
+      },
+      {
+        // 开课申请与排课（教师）：开课申请 → 申请排课 → 我的课表
+        path: 'course-apply',
+        component: () => import('../views/course-apply/index.vue'),
+        meta: { roles: ['teacher'] }
+      },
+      {
+        // 排课审批（管理员）：开课申请审批 / 排课申请审批 / 课表总览
+        path: 'schedule-approve',
+        component: () => import('../views/schedule-approve/index.vue'),
+        meta: { roles: ['admin'] }
+      },
+      {
+        // 教室维护（管理员）：800 间教室的分页 CRUD
+        path: 'room',
+        component: () => import('../views/room/index.vue'),
+        meta: { roles: ['admin'] }
       }
     ]
   }

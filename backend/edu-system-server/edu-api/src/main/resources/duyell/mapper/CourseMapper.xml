@@ -30,6 +30,9 @@
     <update id="update">
         update course
         <set>
+            <if test="courseCode != null and courseCode != ''">
+                course_code = #{courseCode},
+            </if>
             <if test="courseName != null and courseName != ''">
                 course_name = #{courseName},
             </if>

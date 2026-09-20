@@ -359,4 +359,131 @@ INSERT INTO `plan_course` (`plan_id`, `course_code`, `course_name`, `category`, 
   (1, 'EC101', '微观经济学',     'ELECTIVE', 3, 3.0),
   (1, 'MG101', '管理学原理',     'ELECTIVE', 4, 3.0);
 
+-- ----------------------------
+-- Table structure for room
+-- 教室：8 栋 × 10 层 × 10 间 = 800 间（用户给出的规模）
+-- ----------------------------
+DROP TABLE IF EXISTS `room`;
+CREATE TABLE `room`  (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `building` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `floor_no` int NOT NULL,
+  `room_no` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `room_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `capacity` int NOT NULL DEFAULT 60,
+  `room_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'NORMAL',
+  `status` tinyint NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_room`(`building` ASC, `floor_no` ASC, `room_no` ASC) USING BTREE,
+  INDEX `idx_room_pick`(`status` ASC, `capacity` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for class_time
+-- 上课时间安排（冲突检测的数据基础）；刻意不存 term，学期由 course.term 联表得到
+-- ----------------------------
+DROP TABLE IF EXISTS `class_time`;
+CREATE TABLE `class_time`  (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `course_id` int NOT NULL,
+  `weekday` tinyint NOT NULL,
+  `start_period` tinyint NOT NULL,
+  `end_period` tinyint NOT NULL,
+  `start_week` tinyint NOT NULL,
+  `end_week` tinyint NOT NULL,
+  `room_id` int NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_class_time_course`(`course_id` ASC) USING BTREE,
+  INDEX `idx_class_time_room`(`room_id` ASC) USING BTREE,
+  INDEX `idx_class_time_slot`(`weekday` ASC, `start_period` ASC, `end_period` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for course_apply
+-- 教师开课申请（审批流）：审批通过才生成 course 行
+-- ----------------------------
+DROP TABLE IF EXISTS `course_apply`;
+CREATE TABLE `course_apply`  (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `teacher_id` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `course_code` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `course_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `term` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `college_id` int NULL DEFAULT NULL,
+  `credit` decimal(4, 1) NOT NULL DEFAULT 0.0,
+  `class_hour` int NOT NULL DEFAULT 0,
+  `max_student` int NOT NULL DEFAULT 0,
+  `expected_weekday` tinyint NULL DEFAULT NULL,
+  `expected_start_period` tinyint NULL DEFAULT NULL,
+  `expected_end_period` tinyint NULL DEFAULT NULL,
+  `expected_start_week` tinyint NULL DEFAULT NULL,
+  `expected_end_week` tinyint NULL DEFAULT NULL,
+  `prefer_room_id` int NULL DEFAULT NULL,
+  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'PENDING',
+  `reject_reason` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `reviewer` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `review_time` datetime NULL DEFAULT NULL,
+  `created_course_id` int NULL DEFAULT NULL,
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_apply_status`(`status` ASC) USING BTREE,
+  INDEX `idx_apply_teacher`(`teacher_id` ASC, `status` ASC) USING BTREE,
+  INDEX `idx_apply_term`(`term` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for class_time_apply
+-- 教师排课申请（与开课申请分开的第二个审批流）
+-- ----------------------------
+DROP TABLE IF EXISTS `class_time_apply`;
+CREATE TABLE `class_time_apply`  (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `course_id` int NOT NULL,
+  `teacher_id` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `weekday` tinyint NOT NULL,
+  `start_period` tinyint NOT NULL,
+  `end_period` tinyint NOT NULL,
+  `start_week` tinyint NOT NULL,
+  `end_week` tinyint NOT NULL,
+  `room_id` int NULL DEFAULT NULL,
+  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'PENDING',
+  `conflict_info` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `reject_reason` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `reviewer` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `review_time` datetime NULL DEFAULT NULL,
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_ctapply_course`(`course_id` ASC) USING BTREE,
+  INDEX `idx_ctapply_status`(`status` ASC) USING BTREE,
+  INDEX `idx_ctapply_teacher`(`teacher_id` ASC, `status` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of room
+-- 800 行由「数字表 × 数字表 × 数字表」交叉连接程序化生成，不手写 800 条 INSERT。
+-- 容量 = 40 + 楼层*20 = 60~240，便于「按容量最接近」推荐时有区分度。
+-- 与 docs/sql/2026-09-20-p2-schedule-migration.sql 完全一致。
+-- ----------------------------
+INSERT INTO `room` (`building`, `floor_no`, `room_no`, `room_name`, `capacity`, `room_type`, `status`)
+SELECT CONCAT('教', b.n),
+       f.n,
+       LPAD(r.n, 2, '0'),
+       CONCAT('教', b.n, '-', f.n, LPAD(r.n, 2, '0')),
+       40 + f.n * 20,
+       CASE WHEN r.n = 10 THEN 'LAB' WHEN f.n = 10 THEN 'MULTIMEDIA' ELSE 'NORMAL' END,
+       1
+FROM (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+      UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8) b
+CROSS JOIN (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
+            UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10) f
+CROSS JOIN (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
+            UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10) r;
+
+-- ----------------------------
+-- Records of class_time
+-- 示例课表**不放在这里**：课表要按 course_code 反查 course.id，而本文件只建了 CS101/CS102
+-- 两门课（其余 10 门在 seed_data.sql 里）。放在本文件会因查不到课程而写入 NULL 主键失败。
+-- 见 seed_data.sql 第 10 节。
+-- ----------------------------
+
 SET FOREIGN_KEY_CHECKS = 1;

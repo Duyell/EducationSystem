@@ -119,12 +119,15 @@ const adminMenuList = [
   { name: '班级管理', path: '/clazz' },
   { name: '课程管理', path: '/course' },
   { name: '成绩管理', path: '/score' },
-  { name: '培养计划', path: '/training-plan-manage' }
+  { name: '培养计划', path: '/training-plan-manage' },
+  { name: '教室管理', path: '/room' },
+  { name: '排课审批', path: '/schedule-approve' }
 ]
 
-// 教师菜单：不含培养方案/绩点——用户明确要求教师没有绩点相关功能；
-// 若放进公共菜单，教师会点到被路由守卫弹回首页的菜单项。
-const teacherMenuList = [
+// 教师与学生共用的基础菜单。
+// ⚠️ 刻意抽出这一层：学生菜单曾经是 [...teacherMenuList]，结果给教师加菜单项时
+// 会**顺带漏给学生**一个他们无权访问、点了会被守卫弹回首页的入口。
+const commonMenuList = [
   { name: '首页', path: '/index' },
   { name: 'AI 助手', path: '/ai' },
   { name: '课程', path: '/course' },
@@ -132,9 +135,13 @@ const teacherMenuList = [
   { name: '教评', path: '/evaluate' }
 ]
 
-// 学生菜单：在教师菜单基础上增加本人专属的方案与绩点
+// 教师菜单：基础菜单 + 开课申请/排课；不含培养方案与绩点
+// （用户明确要求教师没有绩点相关功能）
+const teacherMenuList = [...commonMenuList, { name: '开课申请', path: '/course-apply' }]
+
+// 学生菜单：基础菜单 + 本人专属的方案与绩点（不含教师的开课申请）
 const studentMenuList = [
-  ...teacherMenuList,
+  ...commonMenuList,
   { name: '我的方案', path: '/training-plan' },
   { name: '我的绩点', path: '/gpa' }
 ]

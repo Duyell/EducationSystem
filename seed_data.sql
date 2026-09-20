@@ -149,7 +149,39 @@ INSERT INTO `score` (`id`, `course_id`, `student_id`, `usual_score`, `exam_score
 -- 冯二二 - SpringBoot
 INSERT INTO `score` (`id`, `course_id`, `student_id`, `usual_score`, `exam_score`, `total_score`, `makeup_score`, `passed`) VALUES (17, 2, '2024002', 85.0, 88.0, 86.8, NULL, 1);
 -- ----------------------------
--- 10. 重置自增主键
+-- 10. 示例课表（P2）
+--
+-- 放在本文件而不是 edujwxt.sql：课表要按 course_code 反查 course.id，而 edujwxt.sql
+-- 只建了 CS101/CS102 两门课，其余 10 门在本文件里。放在这里才能保证 12 门课都已存在。
+--
+-- 三条覆盖三种情况（供冲突检测与「我的课表」演示/测试）：
+--   CS101 周一 1-2 节 第 1-16 周 教1-101 —— 整学期；做「教师冲突」与「教室冲突」的被测对象
+--   CS102 周三 3-4 节 第 1-16 周 教1-102 —— 与 CS101 星期不同，不冲突
+--   CS105 周二 3-5 节 第 9-16 周 教1-201 —— 非整学期（用户明确存在第 9 周开始的课）+ 3 课时块
+--
+-- 与 docs/sql/2026-09-20-p2-schedule-migration.sql 的种子一致。
+-- 用 EXISTS 保护：即使单独导入本文件（没有 room/course）也不会报 NULL 约束错。
+-- ----------------------------
+INSERT INTO `class_time` (`course_id`, `weekday`, `start_period`, `end_period`, `start_week`, `end_week`, `room_id`)
+SELECT c.id, 1, 1, 2, 1, 16, r.id
+FROM `course` c JOIN `room` r ON r.`room_name` = '教1-101'
+WHERE c.`course_code` = 'CS101'
+  AND NOT EXISTS (SELECT 1 FROM `class_time` WHERE `course_id` = c.id AND `weekday` = 1 AND `start_period` = 1);
+
+INSERT INTO `class_time` (`course_id`, `weekday`, `start_period`, `end_period`, `start_week`, `end_week`, `room_id`)
+SELECT c.id, 3, 3, 4, 1, 16, r.id
+FROM `course` c JOIN `room` r ON r.`room_name` = '教1-102'
+WHERE c.`course_code` = 'CS102'
+  AND NOT EXISTS (SELECT 1 FROM `class_time` WHERE `course_id` = c.id AND `weekday` = 3 AND `start_period` = 3);
+
+INSERT INTO `class_time` (`course_id`, `weekday`, `start_period`, `end_period`, `start_week`, `end_week`, `room_id`)
+SELECT c.id, 2, 3, 5, 9, 16, r.id
+FROM `course` c JOIN `room` r ON r.`room_name` = '教1-201'
+WHERE c.`course_code` = 'CS105'
+  AND NOT EXISTS (SELECT 1 FROM `class_time` WHERE `course_id` = c.id AND `weekday` = 2 AND `start_period` = 3);
+
+-- ----------------------------
+-- 11. 重置自增主键
 -- ----------------------------
 -- (不要重置 college, major, clazz, course, course_selection, score, student, teacher 的自增值，
 --  因为后续可能还需要手动插入更多数据，保留当前最大值即可)

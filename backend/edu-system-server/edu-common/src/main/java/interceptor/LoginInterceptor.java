@@ -65,8 +65,34 @@ public class LoginInterceptor implements HandlerInterceptor {
             new AuthRule("/gpa/audit/my", Set.of("GET"), ADMIN, STUDENT),
             new AuthRule("/gpa/rank/*", Set.of("GET"), ADMIN),
             new AuthRule("/gpa/audit/*", Set.of("GET"), ADMIN),
-            new AuthRule("/gpa/**", null, ADMIN)
+            new AuthRule("/gpa/**", null, ADMIN),
             // 培养计划见 TRAINING_PLAN_RULES（需在其前缀规则中放行学生的 /my）
+
+            // ---------- P2：排课 / 教室 / 开课申请 ----------
+            // ⚠️ 同样顺序敏感：越具体的路径必须排在 /xxx/** 之前，
+            //    否则教师会被后面的 ADMIN 规则拒掉（或反过来越权放行）。
+            // 教室：教师与管理员都能查"某时段空闲教室"（排课页要用）；其余教室维护仅管理员
+            new AuthRule("/room/free", Set.of("GET"), ADMIN, TEACHER),
+            new AuthRule("/room/**", null, ADMIN),
+            // 排课：课表查询与冲突检测对教师开放；全量课表、删除、审批仅管理员
+            new AuthRule("/class-time/my", Set.of("GET"), ADMIN, TEACHER),
+            new AuthRule("/class-time/course/*", Set.of("GET"), ADMIN, TEACHER),
+            new AuthRule("/class-time/check", Set.of("POST"), ADMIN, TEACHER),
+            new AuthRule("/class-time/apply/my", Set.of("GET"), ADMIN, TEACHER),
+            new AuthRule("/class-time/apply/*/approve", Set.of("POST"), ADMIN),
+            new AuthRule("/class-time/apply/*/reject", Set.of("POST"), ADMIN),
+            new AuthRule("/class-time/apply", Set.of("POST"), ADMIN, TEACHER),
+            new AuthRule("/class-time/apply", Set.of("GET"), ADMIN),
+            new AuthRule("/class-time/**", null, ADMIN),
+            // 开课申请：教师提交/看自己的，管理员审批
+            new AuthRule("/course-apply/my", Set.of("GET"), ADMIN, TEACHER),
+            new AuthRule("/course-apply/*/approve", Set.of("POST"), ADMIN),
+            new AuthRule("/course-apply/*/reject", Set.of("POST"), ADMIN),
+            new AuthRule("/course-apply", Set.of("POST"), ADMIN, TEACHER),
+            new AuthRule("/course-apply", Set.of("GET"), ADMIN),
+            // 详情：教师可查自己的；归属校验放在 Controller（要读到数据才知道属主）
+            new AuthRule("/course-apply/*", Set.of("GET"), ADMIN, TEACHER),
+            new AuthRule("/course-apply/**", null, ADMIN)
     );
 
     /**

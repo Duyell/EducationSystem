@@ -9,11 +9,15 @@ import java.util.List;
 public interface CourseMapper {
 
     /**
-     * 添加课程
+     * 添加课程。
+     *
+     * <p>回填自增 id：审批通过开课申请后需要用新课程 id 建立关联（{@code course_apply.created_course_id}）。
+     *
      * @param course 课程对象
      */
-    @Insert("insert into course(course_name,teacher_id,college_id,term,credit,class_hour,max_student) " +
-            "values (#{courseName},#{teacherId},#{collegeId},#{term},#{credit},#{classHour},#{maxStudent} )")
+    @Insert("insert into course(course_code,course_name,teacher_id,college_id,term,credit,class_hour,max_student) " +
+            "values (#{courseCode},#{courseName},#{teacherId},#{collegeId},#{term},#{credit},#{classHour},#{maxStudent} )")
+    @Options(useGeneratedKeys = true, keyProperty = "id")
     void add(Course course);
 
     /**
@@ -57,6 +61,17 @@ public interface CourseMapper {
      * @return 课程列表
      */
     List<Course> selectByTeacherId(String teacherId);
+
+    /**
+     * 按课程代码查 id（同一代码可能有多条开课记录，取最早的一条）。
+     *
+     * <p>课程代码是培养计划/已修判定/补考关联的唯一依据，P2 的排课与 P3 的选课都要用它反查。
+     *
+     * @param courseCode 课程代码，如 CS101
+     * @return 课程 id；无则 null
+     */
+    @Select("select id from course where course_code = #{courseCode} order by id limit 1")
+    Integer selectIdByCode(@Param("courseCode") String courseCode);
 
     /**
      * 查询课程

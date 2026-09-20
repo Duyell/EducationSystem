@@ -15,6 +15,18 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class Course {
     private Integer id;
+
+    /**
+     * 课程代码，如 CS101。
+     *
+     * <p>同一门课的所有开课行共用同一代码，是培养计划关联、已修判定、补考关联的唯一依据
+     * （见 docs/教务业务扩展设计.md §3.1）。**由管理员在开课时填写**。
+     *
+     * <p>⚠️ P1 建了这一列但一直没接到 POJO/Mapper 上，导致管理端新建的课程 code 恒为 NULL，
+     * 判断类功能会静默失配；P2 依赖「审批通过生成 course」故在此补齐。
+     */
+    private String courseCode;
+
     private String courseName;
     private String teacherId;
     private Integer collegeId;

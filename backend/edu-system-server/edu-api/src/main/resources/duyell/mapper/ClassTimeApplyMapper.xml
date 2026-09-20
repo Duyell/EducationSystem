@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="duyell.mapper.ClassTimeApplyMapper">
+
+    <!-- 学期只能来自 course.term（class_time_apply 不冗余 term），与 class_time 的口径保持一致 -->
+    <sql id="joinedColumns">
+        cta.*, c.course_code as courseCode, c.course_name as courseName, c.term as term,
+        t.teacher_name as teacherName, r.room_name as roomName
+    </sql>
+
+    <sql id="joinedTables">
+        from class_time_apply cta
+        left join course c on cta.course_id = c.id
+        left join teacher t on cta.teacher_id = t.teacher_id
+        left join room r on cta.room_id = r.id
+    </sql>
+
+    <select id="selectById" resultType="com.duyell.ClassTimeApply">
+        select <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        where cta.id = #{id}
+    </select>
+
+    <select id="list" resultType="com.duyell.ClassTimeApply">
+        select <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        <where>
+            <if test="teacherId != null and teacherId != ''">
+                and cta.teacher_id = #{teacherId}
+            </if>
+            <if test="status != null and status != ''">
+                and cta.status = #{status}
+            </if>
+            <if test="courseId != null">
+                and cta.course_id = #{courseId}
+            </if>
+        </where>
+        order by cta.id desc
+    </select>
+
+</mapper>

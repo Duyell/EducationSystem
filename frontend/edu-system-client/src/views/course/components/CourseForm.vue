@@ -1,5 +1,9 @@
 <template>
   <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
+    <el-form-item label="课程代码" prop="courseCode">
+      <el-input v-model="form.courseCode" placeholder="如 CS101（同一门课各学期共用同一代码）" />
+    </el-form-item>
+
     <el-form-item label="课程名称" prop="courseName">
       <el-input v-model="form.courseName" placeholder="请输入课程名称" />
     </el-form-item>
@@ -72,6 +76,7 @@ const formRef = ref()
 
 const form = ref<Course>({
   id: 0,
+  courseCode: '',
   courseName: '',
   teacherId: '',
   collegeId: '',
@@ -82,6 +87,8 @@ const form = ref<Course>({
 })
 
 const rules = ref({
+  // 课程代码是培养计划/已修判定/补考关联的唯一依据，缺了它这门课在判断类功能里等于不存在
+  courseCode: [{ required: true, message: '课程代码不能为空', trigger: 'blur' }],
   courseName: [{ required: true, message: '课程名称不能为空', trigger: 'blur' }],
   teacherId: [{ required: true, message: '请选择授课教师', trigger: 'change' }],
   collegeId: [{ required: true, message: '请选择学院', trigger: 'change' }],
@@ -110,6 +117,7 @@ const setData = (row: Course) => {
 const reset = () => {
   form.value = {
     id: 0,
+    courseCode: '',
     courseName: '',
     teacherId: '',
     collegeId: '',
@@ -121,7 +129,13 @@ const reset = () => {
 }
 
 const submit = async () => {
-  await formRef.value.validate()
+  // el-form 的 validate() 校验失败时会 **reject**（不是返回 false）。
+  // 不接住就变成未处理的 Promise 异常；错误提示由 el-form 自己渲染。
+  try {
+    await formRef.value.validate()
+  } catch {
+    return
+  }
   if (form.value.id) {
     await axios.put('/api/course', form.value)
   } else {
