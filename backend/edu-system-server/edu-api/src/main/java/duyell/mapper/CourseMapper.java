@@ -82,6 +82,25 @@ public interface CourseMapper {
     List<Course> selectCourseByName(String courseName);
 
     /**
+     * 按课程代码查**全部**开课记录（同一代码在不同学期会各有一条）。
+     *
+     * <p>与 {@link #selectIdByCode} 的区别很重要：那个只取最早一条，用于"修过没修过"这类
+     * 与学期无关的判定；而"这门课和我课表冲突吗"必须挑对**学期**，随便挑一条会安静地查错课表。
+     * 最近学期优先（term 倒序、id 倒序），调用方仍需把选中的学期回显给用户。
+     *
+     * @param courseCode 课程代码，如 CS101
+     */
+    @Select("""
+            select c.*, t.teacher_name as teacherName, co.college_name as collegeName
+            from course c
+            left join teacher t on c.teacher_id = t.teacher_id
+            left join college co on c.college_id = co.id
+            where c.course_code = #{courseCode}
+            order by c.term desc, c.id desc
+            """)
+    List<Course> selectByCode(@Param("courseCode") String courseCode);
+
+    /**
      * 分页查询
      * @param courseName 课程名称
      * @param teacherName 教师名称

@@ -2,6 +2,8 @@ package duyell.ai.controller;
 
 import duyell.ai.config.AiProperties;
 import duyell.ai.service.AiChatService;
+import duyell.ai.tool.ToolDefinition;
+import duyell.ai.tool.ToolRegistry;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +11,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import utils.Result;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -19,6 +24,7 @@ public class AiController {
 
     private final AiChatService aiChatService;
     private final AiProperties aiProperties;
+    private final ToolRegistry toolRegistry;
 
     /**
      * AI 对话接口（SSE 流式响应）
@@ -81,5 +87,36 @@ public class AiController {
                 "baseUrl", aiProperties.getBaseUrl()
         );
         return Result.success(config);
+    }
+
+    /**
+     * 当前角色可用的 Agent 工具清单（含描述、参数 Schema、风险等级）。
+     *
+     * <p>用途有两个：
+     * <ol>
+     *   <li>评测脚本据此断言"模型看到的到底是什么"，而不是在脚本里另抄一份工具定义——
+     *       抄一份迟早会与注册器里的真实描述漂移，评测就失去意义；</li>
+     *   <li>排查"模型为什么不选某个工具"时，可以直接看到它收到的描述。</li>
+     * </ol>
+     *
+     * <p>只返回**当前登录角色自己的**工具（角色取自 token，不接受入参），
+     * 因此不存在越权读取他人工具集的问题。**不含 system prompt**：
+     * 提示词留在服务端，评测要走真实对话链路（{@code /ai/chat}）而不是本地拼一遍。
+     */
+    @GetMapping("/tools")
+    public Result<List<Map<String, Object>>> tools(HttpServletRequest request) {
+        String role = (String) request.getAttribute("role");
+        List<Map<String, Object>> payload = new ArrayList<>();
+        for (ToolDefinition def : toolRegistry.getToolsByRole(role)) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", def.name());
+            item.put("displayName", def.displayName());
+            item.put("description", def.description());
+            item.put("parameters", def.parameters() == null ? Map.of() : def.parameters());
+            item.put("riskLevel", def.riskLevel() == null ? null : def.riskLevel().name());
+            item.put("requiresConfirmation", def.requiresConfirmation());
+            payload.add(item);
+        }
+        return Result.success(payload);
     }
 }

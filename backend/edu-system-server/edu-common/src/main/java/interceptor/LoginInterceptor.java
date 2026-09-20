@@ -1,8 +1,10 @@
 package interceptor;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
@@ -20,6 +22,7 @@ import java.util.Set;
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class LoginInterceptor implements HandlerInterceptor {
 
     private final JwtUtil jwtUtil;
@@ -121,6 +124,18 @@ public class LoginInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // 异步派发（Servlet 3 的 AsyncContext.dispatch）**不重复鉴权**。
+        // 异步派发是同一个请求的第二次经过拦截器：它在 REQUEST 阶段已经鉴权通过，
+        // 这里再查一次 Redis 不但多余，还会真的把流打断——用户换个标签页/设备重新登录后
+        // `token:<username>` 被覆盖，于是**仍在进行中的** SSE 流（例如 AI 正在流式输出）
+        // 会在派发阶段被判"登录失效"。更糟的是此时响应已提交，reject() 写不了 JSON，
+        // 只会抛 IllegalStateException: getOutputStream() has already been called，
+        // 表现为一个看不懂的 500 而不是 401。
+        // （实测：并发登录同一用户会让正在流式输出的 /ai/chat 连接以 TypeError: terminated 断开。）
+        if (request.getDispatcherType() == DispatcherType.ASYNC) {
+            return true;
+        }
+
         // ================= 1. 登录校验 =================
         String token = request.getHeader("token");
         if (token == null || token.isEmpty()) {
@@ -174,7 +189,15 @@ public class LoginInterceptor implements HandlerInterceptor {
     }
 
     /** 返回 JSON 错误响应 */
-    private boolean reject(HttpServletResponse response, int status, String msg) throws IOException {        response.setStatus(status);
+    private boolean reject(HttpServletResponse response, int status, String msg) throws IOException {
+        // 响应一旦提交就无法再改状态码或写响应体（典型场景：SSE 流已开始输出）。
+        // 硬写会抛 IllegalStateException，把一次干净的拒绝变成 500 + 一屏堆栈，
+        // 反而掩盖了真实原因（谁、因为什么被拒），所以这里只记日志、不动响应。
+        if (response.isCommitted()) {
+            log.warn("响应已提交，无法写入拒绝响应: status={}, msg={}", status, msg);
+            return false;
+        }
+        response.setStatus(status);
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write("{\"code\":\"" + status + "\",\"msg\":\"" + msg + "\",\"data\":null}");
         return false;

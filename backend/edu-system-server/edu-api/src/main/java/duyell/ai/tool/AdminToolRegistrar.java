@@ -3,11 +3,14 @@ package duyell.ai.tool;
 import com.duyell.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import duyell.mapper.*;
+import duyell.service.CourseApplyService;
 import duyell.service.HomeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
+import utils.BusinessException;
 
+import java.math.BigDecimal;
 import java.util.*;
 
 @Component
@@ -23,9 +26,10 @@ public class AdminToolRegistrar implements InitializingBean {
     private final MajorMapper majorMapper;
     private final ClazzMapper clazzMapper;
     private final HomeService homeService;
+    private final CourseApplyService courseApplyService;
     private final ObjectMapper objectMapper;
 
-    /** 管理员工具全部为只读查询，因此统一使用 READ_ONLY 风险等级 */
+    /** 查询类工具统一使用 READ_ONLY；写操作（如审批开课）逐个显式标注 DANGEROUS */
     private static final RiskLevel READ_ONLY = RiskLevel.READ_ONLY;
 
     @Override
@@ -156,9 +160,123 @@ public class AdminToolRegistrar implements InitializingBean {
                     return objectMapper.writeValueAsString(classes);
                 }
         ));
+
+        // ---------- P5：开课申请审批（写操作，必须人工确认） ----------
+
+        registry.register("admin", new ToolDefinition(
+                "approve_course_apply", "审批通过开课申请",
+                "管理员审批通过一条**待审批（PENDING）**的开课申请，通过后系统会据申请生成课程记录。"
+                        + "当管理员说\"通过这条开课申请\"\"批准 XXX 老师开课\"时使用本工具。"
+                        + "参数：applyId（开课申请ID，必填，可用 list_courses 之外的申请列表页查看，或让教师提供）。"
+                        + "只会通过 PENDING 的申请——已通过或已驳回的会被拒绝（不会重复生成课程）。"
+                        + "审批通过**不等于**学生马上能选到：该课程还需要教师申请排课，"
+                        + "且需要管理员开启选课轮次后学生才能选。"
+                        + "审批人一律取当前登录账号，不接受指定。"
+                        + "缺少 applyId 时返回 {\"error\":\"缺少参数 applyId\"}，此时请向管理员询问要审批的申请编号。",
+                Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "applyId", Map.of("type", "integer", "minimum", 1,
+                                        "description", "开课申请ID（必填，且该申请需处于待审批状态）")
+                        ),
+                        "required", List.of("applyId")
+                ),
+                RiskLevel.DANGEROUS,
+                (args, userId, role) -> {
+                    String err = firstError(requireArgs(args, "applyId"),
+                            checkInt(args, "applyId", 1, Integer.MAX_VALUE, true));
+                    if (err != null) {
+                        return errorJson(err);
+                    }
+                    try {
+                        CourseApply approved = courseApplyService.approve(intOf(args, "applyId"), userId);
+                        Map<String, Object> result = new LinkedHashMap<>();
+                        result.put("id", approved.getId());
+                        result.put("courseCode", approved.getCourseCode());
+                        result.put("courseName", approved.getCourseName());
+                        result.put("term", approved.getTerm());
+                        result.put("status", approved.getStatus());
+                        result.put("statusText", "已通过");
+                        // 生成的课程行 id：后续申请排课、以及学生选课都围绕它进行
+                        result.put("createdCourseId", approved.getCreatedCourseId());
+                        result.put("message", "开课申请已通过，已生成课程（courseId=" + approved.getCreatedCourseId()
+                                + "，课程代码 " + approved.getCourseCode() + "）。"
+                                + "该课程还需教师申请排课，且需开启选课轮次后学生才能选到。");
+                        return objectMapper.writeValueAsString(result);
+                    } catch (BusinessException e) {
+                        return errorJson(e.getMessage());
+                    }
+                }
+        ));
     }
 
     private Map<String, Object> noParams() {
         return Map.of("type", "object", "properties", Map.of());
+    }
+
+    // ===================== 工具参数读取与校验 =====================
+    // 模型可能漏传 schema 里标了 required 的参数，也可能传来无法解析的值，
+    // 因此执行前自己校验一遍，并返回 {"error":"..."} 让模型能解释失败原因。
+
+    /** 缺少必填参数时返回中文提示，全部存在则返回 null */
+    private static String requireArgs(Map<String, Object> args, String... keys) {
+        for (String key : keys) {
+            if (!hasValue(args, key)) {
+                return "缺少参数 " + key;
+            }
+        }
+        return null;
+    }
+
+    /** 参数是否存在且非空白 */
+    private static boolean hasValue(Map<String, Object> args, String key) {
+        Object v = args.get(key);
+        return v != null && !String.valueOf(v).trim().isEmpty();
+    }
+
+    /**
+     * 整数参数校验。
+     *
+     * @param required 为 false 时允许省略（省略即返回 null，不算错误）
+     */
+    private static String checkInt(Map<String, Object> args, String key, int min, int max, boolean required) {
+        if (!hasValue(args, key)) {
+            return required ? "缺少参数 " + key : null;
+        }
+        int value;
+        try {
+            value = intOf(args, key);
+        } catch (NumberFormatException e) {
+            return key + " 必须是整数，实际为 " + args.get(key);
+        }
+        if (value < min || value > max) {
+            return key + " 必须在 " + min + "~" + max + " 之间，实际为 " + value;
+        }
+        return null;
+    }
+
+    /** 返回第一个非 null 的错误信息（把多个校验串起来写） */
+    private static String firstError(String... errors) {
+        for (String e : errors) {
+            if (e != null) {
+                return e;
+            }
+        }
+        return null;
+    }
+
+    /** 读取整数参数；缺失返回 null，无法解析抛 NumberFormatException */
+    private static Integer intOf(Map<String, Object> args, String key) {
+        if (!hasValue(args, key)) {
+            return null;
+        }
+        return new BigDecimal(String.valueOf(args.get(key)).trim()).intValue();
+    }
+
+    /** 业务失败也返回 JSON（而不是抛异常）：抛异常会被上层替换成模型无法利用的通用错误 */
+    private String errorJson(String message) throws Exception {
+        Map<String, Object> error = new LinkedHashMap<>();
+        error.put("error", message == null || message.isBlank() ? "操作失败" : message);
+        return objectMapper.writeValueAsString(error);
     }
 }

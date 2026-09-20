@@ -22,7 +22,14 @@ public class ToolRegistry {
     private final Map<String, Set<String>> roleToolNames = new ConcurrentHashMap<>();
 
     public void register(String role, ToolDefinition tool) {
-        allTools.put(tool.name(), tool);
+        // 同名工具重复注册会静默覆盖（allTools 是按名的 Map），
+        // 两个注册器各自起名时很容易撞车，且症状是"某个工具的描述莫名其妙变了"——极难排查。
+        ToolDefinition previous = allTools.put(tool.name(), tool);
+        if (previous != null) {
+            log.warn("工具 [{}] 被重复注册，后者覆盖前者（展示名: {} -> {}）。"
+                            + "请确认不是两个注册器起了同一个名字。",
+                    tool.name(), previous.displayName(), tool.displayName());
+        }
         roleToolNames.computeIfAbsent(role, k -> new CopyOnWriteArraySet<>()).add(tool.name());
 
         // 注册期自检：写语义的工具若仍为 READ_ONLY，说明风险等级漏标（会绕过人工确认）
