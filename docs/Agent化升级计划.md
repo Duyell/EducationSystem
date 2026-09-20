@@ -41,14 +41,16 @@
 ## 接续开发指南（每次继续本项目先读这一节）
 
 > 本节为「下次开工」而写：环境怎么起、怎么验证、哪些事在等用户确认。
-> 更新到 2026-09-19，阶段 0 完成并已推送 `origin/main`。
+> 更新到 2026-09-20：Agent 主线（M1 阶段 0）＋**教务业务扩展 P1/P2 均已完成并推送** `origin/main`（`bc734f9`）。
 
 ### 0. 快速定位
 
 | 想了解 | 看哪里 |
 |---|---|
 | 计划本身、里程碑与验收标准 | 本文档第三～七节 |
-| 已经做了什么、踩过什么坑 | `docs/开发记录.md`（追加式，倒序） |
+| **教务业务扩展（培养计划/绩点→排课→选课→考试）该做什么** | `docs/教务业务扩展设计.md`（**权威**：业务规则、表设计、接口、分阶段计划、测试设计） |
+| **现在做到哪一步了** | 同上「进度追踪」表：**P1 ✅、P2 ✅**，下一步 **P3 选课轮次 + 选课/补退选** |
+| 已经做了什么、踩过什么坑 | `docs/开发记录.md`（追加式，**倒序**，最新在最上面） |
 | 前端该按什么规范写 | `docs/技能使用规范.md` + 项目级技能 `.dsh/skills/edu-frontend-rules.md` |
 | 现有 AI 模块怎么运作 | `docs/AI模块架构文档.md`（注意：**尚未更新到阶段 0 之后的状态**） |
 
@@ -73,7 +75,11 @@ npm run dev        # 开发（端口 5173，代理到 8080）
 npm run type-check # 类型检查
 ```
 
-外部依赖现状：MySQL 8.4.7（库 `edujwxt`，10 张表 + 种子数据 + 安全约束齐全）、Redis 5.0.14.1。
+外部依赖现状：MySQL 8.4.7（库 `edujwxt`，**现已 14 张业务表**：原有 11 张 + P1 的
+`training_plan`/`plan_course`/`gpa_rule` + P2 的 `room`(800 行)/`class_time`/`course_apply`/`class_time_apply`）、Redis 5.0.14.1。
+**全新建库**：依次导入 `edujwxt.sql` → `seed_data.sql`（顺序不能反，课表种子依赖两边都建好的课程）。
+⚠️ 新装的坑：课表种子放在 `seed_data.sql` 而不是 `edujwxt.sql`，因为后者只有 2 门课，
+按 `course_code` 反查会得到 NULL 主键而使导入失败。
 **云 `AI_API_KEY` 未配置**，因此 `/ai/chat` 只能验证到"明确报错"这一层 —— 但**可用本地 Ollama 补上**，见下节。
 
 ### 1.1 用本地 Ollama 做真实 LLM 验证（已具备条件）
@@ -104,23 +110,44 @@ java -jar edu-api\target\edu-api-0.0.1-SNAPSHOT.jar
 > 但 7B 模型的工具调用能力弱于云端大模型，适合验证**链路是否通**
 > （事件协议、确认卡片、审计落库、幂等、限流），**不适合**作为工具选择准确率的基准。
 
-### 2. 当前验证方式（改完代码跑这三样）
+### 2. 当前验证方式（改完代码按需跑，**改哪层跑哪层**）
+
+先起 Redis + 后端（见上节），业务类校验还需要 MySQL 在线。
 
 ```powershell
-# 后端单测（39 项；含真实 MySQL 审计落库与真实 Redis 限流）
+# ---------- 后端单测：89 项（Agent 安全底座 + 绩点/学分 + 排课冲突）----------
 cd backend\edu-system-server; mvn -o -B test -pl edu-api -am
 
-# 端到端安全断言（16 项；需 Redis + 后端已启动）
-.\.dsh\verify-m1.ps1
+# ---------- 业务扩展接口层（需 Redis + 后端已启动）----------
+.\.dsh\verify-p1-api.ps1      # 31 项：绩点/培养计划的读接口与越权
+.\.dsh\verify-p1-write.ps1    # 63 项：培养计划写接口（自带 fixture，可重复跑）
+.\.dsh\verify-p2-api.ps1      # 136 项：教室/冲突检测/两条审批流完整链路
 
-# 前端：类型检查 + linter 全量
+# ---------- 浏览器层（需前端 5173 也在跑）----------
+node .dsh\verify-p1-ui.cjs    # 67 项：绩点/方案/计划维护三页
+node .dsh\verify-p2-ui.cjs    # 60 项：开课申请→审批→排课→冲突提示→课表
+
+# ---------- 新装库（建临时库导入，不影响现有库）----------
+.\.dsh\validate-edujwxt-sql.ps1
+
+# ---------- 前端 ----------
 cd frontend\edu-system-client; npm run type-check
-node .dsh\lint-ai-view.cjs <某个.vue>     # 或遍历 22 个 .vue
+npm run build-only            # 沙箱下需提权：Vite 配置加载会 child_process.exec
 ```
 
-**两条纪律**（都是踩过坑换来的，见开发记录）：
+**四条纪律**（都是踩过坑换来的，见开发记录）：
 - 只要测试会写真实持久化存储（MySQL/Redis），**必须连续跑两次确认结果一致**——只跑一次绿过不算数。
 - 测试失败**先确认外部依赖在线**（Redis 停止曾被误判为限流逻辑 bug）。
+- 断言"某处有 N 条数据"时先想清楚**这个断言能不能失败**：本仓库出过"断言只检查列宽、
+  所以漏洞照样通过"的事故，也出过 PowerShell 把 1 条数据读成空、使断言看起来像"数据为空"的误报。
+- **含中文的文件（尤其是 `.ps1`）绝不用 PowerShell 的 `Get-Content`/`Set-Content` 往返改写**：
+  PS 按 ANSI 读，中文会全变乱码。要批量改就用 write/edit 工具；校验脚本尽量写成 ASCII-only。
+
+> 🖥️ **浏览器验证需要一次性提权**：Playwright 启动 Chromium 走 `--remote-debugging-pipe`（命名管道），
+> 会被 workspace-write 沙箱以 `spawn EPERM` 拒绝。`npm run dev` / `build-only` 同理
+> （Vite 配置加载内部会 `child_process.exec`）。这不是代码问题，提权重试即可。
+> 另外本机 Playwright 浏览器版本与 `playwright-core` 钉的版本不一致，
+> 脚本里已用 `resolveChromium()` 自动指向已安装的最新 `chromium-*`，**不要**去下载。
 
 ### 3. 阶段性成果（供讲解用，非路线图）
 
@@ -132,28 +159,53 @@ node .dsh\lint-ai-view.cjs <某个.vue>     # 或遍历 22 个 .vue
 - **审计表 `ai_tool_audit`**：四类以上状态、可变宽截断防御、失败不外抛但不静默。
 - **可复用的验证脚本** `.dsh/verify-m1.ps1`：16 项断言，含跨用户确认被拒、限流边界精确命中。
 - **仓库卫生**：`node_modules` 已移出版本库（已跟踪文件 12,143 → 170）。
+- **教务业务扩展 P1**（培养计划 + 绩点/排名 + 毕业学分审核，含前端三页）：
+  绩点公式 `score/10 - 5`（经用户逐例纠正两次才对，**不要**再改成"整数部分拼接"写法）；
+  权限规则顺序敏感，已实测教师无绩点权限、学生只能看本人数据。
+- **教务业务扩展 P2**（教室 800 间 + 排课 + 冲突检测 + 两条审批流，含前端四页）：
+  冲突判据写在 SQL 里且**全项目只此一处**（闭区间，相接不算冲突）；
+  教室推荐按"容量/楼栋/楼层/房间号"排序而非自增 id（否则推荐结果会随安装而变）。
+- **自动化验证总盘子**：后端单测 89 + 接口 31/63/136 + 浏览器 67/60
+  —— 其中浏览器那两层是唯一能证明"数据真的画到屏幕上了"的，
+  已各抓到过接口层与类型检查都发现不了的缺陷。
 
 ### 4. 待用户确认的事项（不要在未确认时擅自处理）
 
 | 事项 | 现状 | 需要用户决定什么 |
 |---|---|---|
 | `sendSse()` 既有缺陷 | 只捕获 `IOException`，客户端中途断开时 `IllegalStateException` 冒泡成误导日志。已核对非本次引入 | 是否现在修（修法简单：catch 一并捕获） |
-| 前端 `frontend/.vscode/` | 未跟踪，`frontend/.gitignore` 已含 `.vscode/*` | 是否需要提交（通常不需要） |
+| 前端 `frontend/.vscode/` | 未跟踪（仓库根 `.gitignore` 只忽略了根目录的 `.vscode/*`） | 是否需要提交（通常不需要；也可补一条忽略规则） |
 | M2 拆分 `views/ai/index.vue` | 已达 752 行，按 `vue-best-practices` 的客观标准已构成 mega component | 是否在 M2 一并拆组件 |
-| 真实 LLM 验证 | 缺 `AI_API_KEY` | 是否提供 Key 补一次真实对话验证 |
+| 真实 LLM 验证 | 缺 `AI_API_KEY`（**本地 Ollama 已可替代**，`qwen2.5:7b` 已跑通 9/9） | 是否提供云 Key 做一次大模型对比 |
+| 培养计划示例数据 | `training_plan` 里那份是**示例**，且现有课程库只有 2 个学期 12 门课 | 是否需要我按真实教学计划补一份完整 4 年数据 |
 
-### 5. 下一步：M2 框架化迁移（计划下一阶段）
+### 5. 下一步（两条线，用户指定哪条就走哪条）
 
-M2 目标（详见第三节阶段 1）与**开工入口建议**：
-1. **先做最小的 Spring AI 接入验证**：新建 `edu-agent` 模块 → 接 `spring-ai-bom` → 迁移一个工具（如 `get_my_courses`）
-   到 `@Tool` 形态 → 确认能跑通，**再**批量迁移其余 20 个。不要一次性改完 21 个工具。
-2. **`ChatMemory` + Redis 多轮记忆**：当前每轮只构造 `[system, user]` 两条消息、没有 sessionId，
-   这是与"真 Agent"差距最大的一项（见第一节差距表）。
-3. **会话管理 API + 前端会话侧栏**，同时按 `vue-best-practices` 拆分 `views/ai/index.vue`。
+**A. 教务业务扩展主线（当前进度最靠前的一条）**：**P3 选课轮次 + 选课/补退选**
+- 权威依据：`docs/教务业务扩展设计.md` §5 的 P3 小节 + §2 业务规则。
+- 六道校验链（顺序即业务含义）：轮次开启 → 适用范围 → 未超学分上限 →
+  未修过（同 `course_code`）→ **无时间冲突（直接复用 P2 的 `checkConflict`）** → 容量未满。
+- 需要新建 `selection_round` / `selection_round_scope`，并给 `course_selection` 加 `round_id`；
+  **改造现有** `CourseSelectionService.select/drop`（已有行锁 + 唯一约束，别推翻）。
+- 用户明确的两条规则：只有管理员**开启选课**后学生才能选，否则只能看；
+  选课期间可退，否则要等**补退选**期间。
+- 做完照例补：接口校验脚本 + 浏览器校验脚本 + 开发者记录 + 本节状态。
+
+**B. Agent 主线：M2 框架化迁移**（详见第三节阶段 1）
+1. **先做最小的 Spring AI 接入验证**：新建 `edu-agent` 模块 → 接 `spring-ai-bom` → 迁移一个工具
+   （如 `get_my_courses`）到 `@Tool` 形态 → 确认能跑通，**再**批量迁移其余 20 个。
+2. `ChatMemory` + Redis 多轮记忆：当前每轮只构造 `[system, user]` 两条消息、没有 sessionId，
+   这是与"真 Agent"差距最大的一项。
+3. 会话管理 API + 前端会话侧栏，同时按 `vue-best-practices` 拆分 `views/ai/index.vue`。
 4. **注意**：引入 Spring AI 后 `AiChatService` 的手写循环与 `OpenAiClient` 会逐步被替代，
-   迁移期间应保留旧实现一个版本周期作为回归对照（阶段 1 计划里已写明）。
+   迁移期间应保留旧实现一个版本周期作为回归对照。
 
-**动手前先读**：`docs/技能使用规范.md`（若涉及前端）、本节第 2 节的三条验证方式。
+> P2 交付后，设计文档 §4.5 里规划的 Agent 新工具又多了两张表可用
+> （`class_time` → `list_my_class_times` / `check_time_conflict`，
+> `course_apply` → `submit_course_apply` / `approve_course_apply`），
+> 这些按原计划仍在 **P5** 做。
+
+**动手前先读**：`docs/技能使用规范.md`（若涉及前端）、本节第 2 节的验证方式。
 
 ---
 
