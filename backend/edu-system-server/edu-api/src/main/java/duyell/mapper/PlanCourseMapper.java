@@ -1,6 +1,7 @@
 package duyell.mapper;
 
 import com.duyell.PlanCourse;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -48,4 +49,12 @@ public interface PlanCourseMapper {
             values(#{planId}, #{courseCode}, #{courseName}, #{category}, #{suggestSemester}, #{credit}, #{remark})
             """)
     void add(PlanCourse planCourse);
+
+    /** 按明细 id 删除 */
+    @Delete("delete from plan_course where id = #{id}")
+    void deleteById(@Param("id") Integer id);
+
+    /** 按方案 id 删除全部明细（方案删除时级联清理） */
+    @Delete("delete from plan_course where plan_id = #{planId}")
+    void deleteByPlanId(@Param("planId") Integer planId);
 }

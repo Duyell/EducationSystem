@@ -49,4 +49,34 @@ public interface TrainingPlanService {
      * @return 含 grade / majorId / majorName / collegeName 的学生对象；不存在返回 null
      */
     Student getStudentPlacement(String studentId);
+
+    // ---------- 管理员维护 ----------
+
+    /**
+     * 培养计划列表（可按专业/年级筛选）。
+     */
+    List<TrainingPlan> listPlans(Integer majorId, String grade);
+
+    /** 按 id 查方案；不存在返回 null */
+    TrainingPlan getPlan(Integer planId);
+
+    /**
+     * 新建培养计划。
+     *
+     * @throws utils.BusinessException 同专业同年级已存在启用中的方案时
+     */
+    Integer createPlan(TrainingPlan plan);
+
+    /** 更新培养计划（按 id） */
+    void updatePlan(TrainingPlan plan);
+
+    /**
+     * 向方案添加课程明细。
+     *
+     * @throws utils.BusinessException 课程代码为空、或该方案中已存在同一课程代码时
+     */
+    void addPlanCourse(PlanCourse planCourse);
+
+    /** 从方案移除课程明细（按明细 id） */
+    void removePlanCourse(Integer planCourseId);
 }

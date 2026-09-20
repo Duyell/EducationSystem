@@ -59,6 +59,35 @@ public interface GpaService {
     GpaResult calcGpa(String studentId, String term);
 
     /**
+     * 专业内绩点排名（用户需求：学生只能看自己的名次，不返回他人数据）。
+     *
+     * <p>排名范围 = 同专业 + 同年级（不同年级课程不同，混排无意义）。
+     * 排序依据 = 累计平均学分绩点，降序。
+     *
+     * @param studentId 学号
+     * @return 排名结果；学生不存在或缺专业/年级信息时 {@code ranked=false}
+     */
+    RankResult rankInMajor(String studentId);
+
+    /**
+     * 专业内排名结果（**只含本人名次，不含他人明细** —— 用户明确要求）。
+     *
+     * @param ranked       是否成功排名（学生不存在或无专业年级信息时为 false）
+     * @param majorName    专业名
+     * @param grade        年级
+     * @param rank         本人名次（1 起）
+     * @param total        参与排名的总人数
+     * @param gpa          本人平均学分绩点
+     * @param totalCredit  本人计入 GPA 的学分
+     * @param topGpa       同专业同年级最高绩点（用于让学生知道差距）
+     * @param passLine     及格线（绩点为 0 的课程不计入，此值供前端说明口径）
+     */
+    record RankResult(boolean ranked, String majorName, String grade, int rank, int total,
+                      BigDecimal gpa, BigDecimal totalCredit, BigDecimal topGpa,
+                      BigDecimal passLine) {
+    }
+
+    /**
      * 绩点计算结果。
      *
      * @param gpa             平均学分绩点

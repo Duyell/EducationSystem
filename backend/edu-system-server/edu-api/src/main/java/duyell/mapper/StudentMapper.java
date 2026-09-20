@@ -85,4 +85,24 @@ public interface StudentMapper {
      * @return 含 grade / majorId / majorName / collegeName 的学生对象；学号不存在返回 null
      */
     Student selectWithGradeAndMajor(@Param("studentId") String studentId);
+
+    /**
+     * 查询同专业同年级的全部学号（用于专业内绩点排名）。
+     *
+     * <p>排名范围按「专业 + 年级」划分：不同年级课程不同，混排无意义。
+     * 只取在读学生（status 非 WITHDRAWN）—— 休学可保留，退学不应参与排名。
+     *
+     * @param majorId 专业 id
+     * @param grade   年级
+     * @return 学号列表
+     */
+    @Select("""
+            select s.student_id from student s
+            join clazz c on s.clazz_id = c.id
+            where c.major_id = #{majorId} and c.grade = #{grade}
+              and (s.status is null or s.status <> 'WITHDRAWN')
+            order by s.student_id
+            """)
+    List<String> listStudentIdsByMajorAndGrade(@Param("majorId") Integer majorId,
+                                               @Param("grade") String grade);
 }

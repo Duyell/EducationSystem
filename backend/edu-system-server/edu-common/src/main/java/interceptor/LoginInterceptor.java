@@ -31,7 +31,13 @@ public class LoginInterceptor implements HandlerInterceptor {
 
     private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
 
-    /** 权限规则：pattern + 方法集合（null=全部方法）+ 允许的角色 */
+    /**
+     * 权限规则：pattern + 方法集合（null=全部方法）+ 允许的角色。
+     *
+     * <p>⚠️ <b>顺序敏感</b>：自上而下匹配，命中第一条即生效。
+     * 因此「某角色的专属子路径」必须排在「整块给另一角色」之前，
+     * 例如 {@code /gpa/my} 必须在 {@code /gpa/**} 之前，否则学生会被后者拒掉。
+     */
     private static final List<AuthRule> RULES = List.of(
             // 管理模块：整块仅管理员
             new AuthRule("/user/**", null, ADMIN),
@@ -51,7 +57,24 @@ public class LoginInterceptor implements HandlerInterceptor {
             new AuthRule("/course-selection/**", null, ADMIN, STUDENT),
             // 教评模块
             new AuthRule("/evaluate/teacher/**", Set.of("GET"), ADMIN, TEACHER),
-            new AuthRule("/evaluate/**", null, ADMIN, STUDENT)
+            new AuthRule("/evaluate/**", null, ADMIN, STUDENT),
+            // 绩点模块：教师无此功能（用户明确要求）
+            // 学生专属路径必须先于 /gpa/** 声明
+            new AuthRule("/gpa/my", Set.of("GET"), ADMIN, STUDENT),
+            new AuthRule("/gpa/rank", Set.of("GET"), ADMIN, STUDENT),
+            new AuthRule("/gpa/audit/my", Set.of("GET"), ADMIN, STUDENT),
+            new AuthRule("/gpa/rank/*", Set.of("GET"), ADMIN),
+            new AuthRule("/gpa/audit/*", Set.of("GET"), ADMIN),
+            new AuthRule("/gpa/**", null, ADMIN)
+            // 培养计划见 TRAINING_PLAN_RULES（需在其前缀规则中放行学生的 /my）
+    );
+
+    /**
+     * 培养计划：整块仅管理员，但要放行学生的 {@code /training-plan/my}。
+     */
+    private static final List<AuthRule> TRAINING_PLAN_RULES = List.of(
+            new AuthRule("/training-plan/my", Set.of("GET"), ADMIN, STUDENT),
+            new AuthRule("/training-plan/**", null, ADMIN)
     );
 
     @Override
@@ -86,9 +109,10 @@ public class LoginInterceptor implements HandlerInterceptor {
         }
 
         // ================= 2. 角色鉴权 =================
+        // 培养计划规则先匹配：需要在其前缀规则中放行学生的 /training-plan/my
         String path = request.getRequestURI().substring(request.getContextPath().length());
         String method = request.getMethod();
-        for (AuthRule rule : RULES) {
+        for (AuthRule rule : concat(RULES, TRAINING_PLAN_RULES)) {
             if (PATH_MATCHER.match(rule.pattern(), path)
                     && (rule.methods() == null || rule.methods().contains(method))) {
                 if (role == null || !rule.roles().contains(role)) {
@@ -104,9 +128,16 @@ public class LoginInterceptor implements HandlerInterceptor {
         return true;
     }
 
+    /** 按顺序拼接两组规则（前一组优先） */
+    private static List<AuthRule> concat(List<AuthRule> a, List<AuthRule> b) {
+        List<AuthRule> all = new java.util.ArrayList<>(a.size() + b.size());
+        all.addAll(a);
+        all.addAll(b);
+        return all;
+    }
+
     /** 返回 JSON 错误响应 */
-    private boolean reject(HttpServletResponse response, int status, String msg) throws IOException {
-        response.setStatus(status);
+    private boolean reject(HttpServletResponse response, int status, String msg) throws IOException {        response.setStatus(status);
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write("{\"code\":\"" + status + "\",\"msg\":\"" + msg + "\",\"data\":null}");
         return false;

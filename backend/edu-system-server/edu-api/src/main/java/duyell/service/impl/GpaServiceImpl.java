@@ -2,8 +2,10 @@ package duyell.service.impl;
 
 import com.duyell.GpaRule;
 import com.duyell.Score;
+import com.duyell.Student;
 import duyell.mapper.GpaRuleMapper;
 import duyell.mapper.ScoreMapper;
+import duyell.mapper.StudentMapper;
 import duyell.service.GpaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +15,7 @@ import utils.BusinessException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -42,6 +45,7 @@ public class GpaServiceImpl implements GpaService {
 
     private final ScoreMapper scoreMapper;
     private final GpaRuleMapper gpaRuleMapper;
+    private final StudentMapper studentMapper;
 
     @Override
     public BigDecimal gradePoint(BigDecimal score) {
@@ -109,6 +113,58 @@ public class GpaServiceImpl implements GpaService {
                 : totalGradePoint.divide(totalCredit, GPA_SCALE, RoundingMode.HALF_UP);
 
         return new GpaResult(gpa, totalCredit, totalGradePoint, details.size(), details);
+    }
+
+    @Override
+    public RankResult rankInMajor(String studentId) {
+        Student placement = studentMapper.selectWithGradeAndMajor(studentId);
+        if (placement == null || placement.getMajorId() == null
+                || placement.getGrade() == null || placement.getGrade().isBlank()) {
+            log.info("缺少专业或年级信息，无法排名: studentId={}", studentId);
+            return new RankResult(false, null, null, 0, 0,
+                    BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, currentPassScore());
+        }
+
+        List<String> peers = studentMapper.listStudentIdsByMajorAndGrade(
+                placement.getMajorId(), placement.getGrade());
+        if (peers == null || peers.isEmpty()) {
+            return new RankResult(false, placement.getMajorName(), placement.getGrade(), 0, 0,
+                    BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, currentPassScore());
+        }
+
+        // 计算同专业同年级每个人的绩点并降序排序；只保留名次，不返回他人明细
+        List<BigDecimal> gpas = new ArrayList<>(peers.size());
+        for (String peer : peers) {
+            gpas.add(calcGpaQuietly(peer));
+        }
+        gpas.sort(Comparator.reverseOrder());
+
+        BigDecimal mine = calcGpaQuietly(studentId);
+        // 名次 = 绩点高于我的人数 + 1（并列取最好名次）
+        int better = 0;
+        for (BigDecimal g : gpas) {
+            if (g.compareTo(mine) > 0) {
+                better++;
+            }
+        }
+
+        GpaResult myGpa = calcGpa(studentId, null);
+        return new RankResult(true, placement.getMajorName(), placement.getGrade(),
+                better + 1, gpas.size(), mine, myGpa.totalCredit(),
+                gpas.get(0), currentPassScore());
+    }
+
+    /**
+     * 排名时逐个计算同学绩点：任一同学数据异常不应让整个排名失败。
+     * 异常时按 0 计入（该同学排到后面），并告警。
+     */
+    private BigDecimal calcGpaQuietly(String studentId) {
+        try {
+            return calcGpa(studentId, null).gpa();
+        } catch (Exception e) {
+            log.warn("计算学生绩点失败，排名时按 0 处理: studentId={}", studentId, e);
+            return BigDecimal.ZERO;
+        }
     }
 
     /**

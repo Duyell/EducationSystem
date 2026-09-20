@@ -1,9 +1,12 @@
 package duyell.mapper;
 
 import com.duyell.TrainingPlan;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -60,4 +63,34 @@ public interface TrainingPlanMapper {
             </script>
             """)
     List<TrainingPlan> list(@Param("majorId") Integer majorId, @Param("grade") String grade);
+
+    /** 新增方案，回填自增 id */
+    @Insert("""
+            insert into training_plan(plan_name, major_id, grade, total_credits,
+                                      required_credits, elective_credits, status, remark)
+            values(#{planName}, #{majorId}, #{grade}, #{totalCredits},
+                   #{requiredCredits}, #{electiveCredits}, #{status}, #{remark})
+            """)
+    @Options(useGeneratedKeys = true, keyProperty = "id")
+    void add(TrainingPlan plan);
+
+    /** 更新方案（不含 create_time；update_time 由数据库自动维护） */
+    @Update("""
+            update training_plan
+            set plan_name = #{planName}, major_id = #{majorId}, grade = #{grade},
+                total_credits = #{totalCredits}, required_credits = #{requiredCredits},
+                elective_credits = #{electiveCredits}, status = #{status}, remark = #{remark}
+            where id = #{id}
+            """)
+    void update(TrainingPlan plan);
+
+    /** 查同专业同年级是否已有方案（用于新建前查重，排除自身） */
+    @Select("""
+            select * from training_plan
+            where major_id = #{majorId} and grade = #{grade} and id <> #{excludeId}
+            limit 1
+            """)
+    TrainingPlan selectDuplicate(@Param("majorId") Integer majorId,
+                                 @Param("grade") String grade,
+                                 @Param("excludeId") Integer excludeId);
 }
