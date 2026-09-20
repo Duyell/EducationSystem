@@ -102,11 +102,14 @@ public class StudentToolRegistrar implements InitializingBean {
         ));
 
         registry.register("student", new ToolDefinition(
-                "get_course_list", "可选课程列表", "查看所有可选课程的列表（支持按名称搜索）",
+                "get_course_list", "可选课程列表",
+                "查看可选课程列表。不传 courseName 时返回全部可选课程；"
+                        + "用户说\"有哪些课能选\"\"列出所有可选课程\"时，直接调用本工具且不要追问课程名称。",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
-                                "courseName", Map.of("type", "string", "description", "课程名称（可选，用于搜索）")
+                                "courseName", Map.of("type", "string",
+                                        "description", "课程名称关键词，用于筛选；省略则返回全部")
                         )
                 ),
                 RiskLevel.READ_ONLY,

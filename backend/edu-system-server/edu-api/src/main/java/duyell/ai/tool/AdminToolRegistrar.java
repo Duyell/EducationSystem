@@ -41,14 +41,16 @@ public class AdminToolRegistrar implements InitializingBean {
         ));
 
         registry.register("admin", new ToolDefinition(
-                "list_users", "用户列表", "查询系统用户列表",
+                "list_users", "用户列表",
+                "查询系统用户列表。所有筛选参数均可省略，省略时返回全部用户（最多50条）。",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
                                 "role", Map.of("type", "string",
                                         "enum", List.of("admin", "teacher", "student"),
-                                        "description", "筛选角色（admin/teacher/student，可选）"),
-                                "username", Map.of("type", "string", "description", "用户名关键词搜索（可选）")
+                                        "description", "按角色筛选；省略则不限制角色"),
+                                "username", Map.of("type", "string",
+                                        "description", "用户名关键词；省略则不限制")
                         )
                 ),
                 READ_ONLY,
@@ -63,12 +65,15 @@ public class AdminToolRegistrar implements InitializingBean {
         ));
 
         registry.register("admin", new ToolDefinition(
-                "list_students", "学生列表", "查询学生列表",
+                "list_students", "学生列表",
+                "查询学生列表。所有筛选参数均可省略，省略时返回全部学生（最多50条）。",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
-                                "studentName", Map.of("type", "string", "description", "学生姓名搜索（可选）"),
-                                "studentId", Map.of("type", "string", "description", "学生学号搜索（可选）")
+                                "studentName", Map.of("type", "string",
+                                        "description", "学生姓名关键词；省略则不限制"),
+                                "studentId", Map.of("type", "string",
+                                        "description", "学生学号关键词；省略则不限制")
                         )
                 ),
                 READ_ONLY,
@@ -82,12 +87,15 @@ public class AdminToolRegistrar implements InitializingBean {
         ));
 
         registry.register("admin", new ToolDefinition(
-                "list_teachers", "教师列表", "查询教师列表",
+                "list_teachers", "教师列表",
+                "查询教师列表。所有筛选参数均可省略，省略时返回全部教师（最多50条）。",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
-                                "teacherName", Map.of("type", "string", "description", "教师姓名搜索（可选）"),
-                                "teacherId", Map.of("type", "string", "description", "教师工号搜索（可选）")
+                                "teacherName", Map.of("type", "string",
+                                        "description", "教师姓名关键词；省略则不限制"),
+                                "teacherId", Map.of("type", "string",
+                                        "description", "教师工号关键词；省略则不限制")
                         )
                 ),
                 READ_ONLY,
@@ -101,11 +109,13 @@ public class AdminToolRegistrar implements InitializingBean {
         ));
 
         registry.register("admin", new ToolDefinition(
-                "list_courses", "课程列表", "查询课程列表",
+                "list_courses", "课程列表",
+                "查询课程列表。省略 courseName 时返回全部课程（最多50条）。",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
-                                "courseName", Map.of("type", "string", "description", "课程名称搜索（可选）")
+                                "courseName", Map.of("type", "string",
+                                        "description", "课程名称关键词；省略则返回全部")
                         )
                 ),
                 READ_ONLY,
