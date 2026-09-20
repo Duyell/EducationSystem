@@ -15,6 +15,12 @@
             <if test="totalScore != null">
                 total_score = #{totalScore},
             </if>
+            <if test="makeupScore != null">
+                makeup_score = #{makeupScore},
+            </if>
+            <if test="passed != null">
+                passed = #{passed},
+            </if>
         </set>
         where id = #{id}
     </update>
@@ -25,7 +31,9 @@
         </foreach>
     </delete>
     <select id="list" resultType="com.duyell.Score">
-        select s.*, c.course_name as courseName,stu.student_name as studentName, c.term as term from score s
+        select s.*, c.course_name as courseName, stu.student_name as studentName, c.term as term,
+               c.course_code as courseCode, c.credit as credit
+        from score s
         left join course c on s.course_id = c.id
         left join student stu on s.student_id = stu.student_id
         <where>

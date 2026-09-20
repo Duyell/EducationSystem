@@ -14,7 +14,8 @@ public interface ScoreMapper {
      * 添加成绩
      * @param score 成绩
      */
-    @Insert("insert into score(course_id, student_id, usual_score, exam_score, total_score) values(#{courseId},#{studentId},#{usualScore},#{examScore},#{totalScore})")
+    @Insert("insert into score(course_id, student_id, usual_score, exam_score, total_score, makeup_score, passed) "
+            + "values(#{courseId},#{studentId},#{usualScore},#{examScore},#{totalScore},#{makeupScore},#{passed})")
     void add(Score score);
 
     /**

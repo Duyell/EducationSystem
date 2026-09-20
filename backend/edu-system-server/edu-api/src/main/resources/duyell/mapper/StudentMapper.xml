@@ -93,4 +93,17 @@
             #{id}
         </foreach>
     </select>
+    <select id="selectWithGradeAndMajor" resultType="com.duyell.Student">
+        select s.id, s.student_id, s.student_name, s.clazz_id,
+               c.grade        as grade,
+               c.major_id     as majorId,
+               c.clazz_name   as clazzName,
+               m.major_name   as majorName,
+               col.college_name as collegeName
+        from student s
+        left join clazz c on s.clazz_id = c.id
+        left join major m on c.major_id = m.id
+        left join college col on m.college_id = col.id
+        where s.student_id = #{studentId}
+    </select>
 </mapper>

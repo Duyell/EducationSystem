@@ -26,7 +26,20 @@ public class Student {
     private String email;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+
+    /**
+     * 学籍状态：ACTIVE 在读 / SUSPENDED 休学 / WITHDRAWN 退学。
+     * <p>本轮只加字段，未接入任何业务逻辑（用户确认后续再补）。
+     */
+    private String status;
+
     private String clazzName;
     private String collegeName;
     private String majorName;
+
+    /** 年级（来自 clazz.grade，联表查询带出）——用于定位学生适用的培养计划版本 */
+    private String grade;
+
+    /** 专业 id（来自 clazz.major_id，联表查询带出） */
+    private Integer majorId;
 }

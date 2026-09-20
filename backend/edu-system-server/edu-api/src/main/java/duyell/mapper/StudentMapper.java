@@ -74,4 +74,15 @@ public interface StudentMapper {
      * @return 学生列表
      */
     List<Student> selectByStudentIds(@Param("studentIds") List<String> studentIds);
+
+    /**
+     * 查询学生的「定位信息」：年级(clazz.grade) 与 专业(major_id)。
+     *
+     * <p>用于确定学生适用的培养计划版本（设计文档 §2.1 版本策略：老生沿用入学年级方案）。
+     * 结果封装在 Student 的 grade / majorId 两个冗余字段里。
+     *
+     * @param studentId 学号
+     * @return 含 grade / majorId / majorName / collegeName 的学生对象；学号不存在返回 null
+     */
+    Student selectWithGradeAndMajor(@Param("studentId") String studentId);
 }
