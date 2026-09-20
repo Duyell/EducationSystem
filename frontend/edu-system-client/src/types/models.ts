@@ -531,3 +531,118 @@ export interface SelectionRoundQuery {
   term: string
   status: number | ''
 }
+
+// ===================== P4：考试安排 =====================
+// 与后端 com.duyell.ExamSchedule 及 duyell.service.ExamService 的 record 一一对应，
+// 见 docs/教务业务扩展设计.md §3.2(9)
+
+export type ExamType = 'FINAL' | 'MAKEUP' | 'MIDTERM'
+
+/**
+ * 一场考试安排（ExamSchedule）。
+ *
+ * ⚠️ 报文里**没有** `endTime`、也没有 `upcoming`：它们是普通 Java 方法而不是 getter，
+ * Jackson 不序列化。结束时间要在前端用 `examTime + durationMinutes` 算
+ * （见 `utils/exam.ts` 的 `examEndTime`）。
+ *
+ * ⚠️ `typeLabel` 相反，**是**会序列化的现成中文标签（"期末"/"补考"/"期中"），
+ * 优先用它，不要自己再映射一套。
+ */
+export interface ExamSchedule {
+  id?: number
+  courseId: number
+  examType: ExamType
+  /** ISO 本地时间串（不带时区），如 2026-09-27T09:00:00 */
+  examTime: string
+  durationMinutes: number
+  /** 考场教室，可空 = 待定 */
+  roomId?: number
+  /** 座位/考场号段，可空 */
+  seatRange?: string
+  /** 监考教师（可多人），可空 */
+  invigilator?: string
+  /** 1=有效 0=作废 */
+  status?: number
+  remark?: string
+  createTime?: string
+  updateTime?: string
+  // ---- 展示用冗余字段（后端联表带出，不落库） ----
+  courseCode?: string
+  courseName?: string
+  teacherName?: string
+  roomName?: string
+  term?: string
+  /** 后端已给好的中文类型标签 */
+  typeLabel?: string
+}
+
+/**
+ * 一条考试冲突（学生时间冲突 / 考场占用冲突共用这个形状）。
+ *
+ * 只声明契约保证存在的字段：渲染时不要依赖下面没列的东西，
+ * 否则页面上会出现 "undefined"。
+ */
+export interface ExamConflictItem {
+  courseCode?: string
+  courseName?: string
+  examType?: string
+  /** 后端现成的中文类型标签 */
+  typeLabel?: string
+  /** 冲突那场考试的 ISO 本地时间串 */
+  examTime?: string
+  durationMinutes?: number
+  roomName?: string
+}
+
+/**
+ * 考试冲突预检结果（POST /exam/check）。
+ *
+ * 两个维度是**并列**的，页面上要分两组显示：
+ * - `roomConflicts` —— 同一考场在同一时段被占用
+ * - `studentConflicts` —— 同时选了这两门课的学生会撞考
+ *
+ * ⚠️ 报文里只有 `conflict` / `roomConflicts` / `studentConflicts`，
+ * "共几条"用 `utils/exam.ts` 的 `examConflictCount()` 自行相加。
+ */
+export interface ExamConflictCheck {
+  conflict: boolean
+  roomConflicts: ExamConflictItem[]
+  studentConflicts: ExamConflictItem[]
+}
+
+/**
+ * 考试冲突预检请求体（POST /exam/check）。
+ *
+ * ⚠️ 判据是**半开区间**：`existing.start < newEnd AND existing.end > newStart`。
+ * 09:00-11:00 与 11:00-13:00 只是首尾相接，**不算**冲突；
+ * 这与排课的节次判据（P2，3-4 与 4-5 共用第 4 节算冲突）**故意不同**，不要统一。
+ */
+export interface ExamConflictCheckForm {
+  courseId?: number
+  examTime?: string
+  durationMinutes?: number
+  roomId?: number
+  /** 编辑时排除自己，否则会和自己冲突 */
+  excludeExamId?: number
+}
+
+/** 考试新建/修改的提交体（POST/PUT /exam；PUT 必须带 id） */
+export interface ExamForm {
+  id?: number
+  courseId?: number
+  examType: ExamType
+  examTime: string
+  durationMinutes: number
+  roomId?: number
+  seatRange?: string
+  invigilator?: string
+  status?: number
+  remark?: string
+}
+
+/** 考试列表的筛选条件（空字符串 = 不筛该项） */
+export interface ExamQuery {
+  term: string
+  examType: ExamType | ''
+  courseId?: number
+}

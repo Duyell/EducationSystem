@@ -122,7 +122,8 @@ const adminMenuList = [
   { name: '培养计划', path: '/training-plan-manage' },
   { name: '教室管理', path: '/room' },
   { name: '排课审批', path: '/schedule-approve' },
-  { name: '选课轮次', path: '/selection-round' }
+  { name: '选课轮次', path: '/selection-round' },
+  { name: '考试安排', path: '/exam-manage' }
 ]
 
 // 教师与学生共用的基础菜单。
@@ -136,16 +137,18 @@ const commonMenuList = [
   { name: '教评', path: '/evaluate' }
 ]
 
-// 教师菜单：基础菜单 + 开课申请/排课；不含培养方案与绩点，也不含选课
+// 教师菜单：基础菜单 + 开课申请/排课；不含培养方案与绩点，也不含选课与考试安排
 // （用户明确要求教师没有绩点与选课相关功能，后端对教师返回 403）
 const teacherMenuList = [...commonMenuList, { name: '开课申请', path: '/course-apply' }]
 
-// 学生菜单：基础菜单 + 本人专属的方案/绩点/选课（不含教师的开课申请，也不含管理员的选课轮次）
+// 学生菜单：基础菜单 + 本人专属的方案/绩点/选课/考试
+// （不含教师的开课申请，也不含管理员的选课轮次与考试安排）
 const studentMenuList = [
   ...commonMenuList,
   { name: '我的方案', path: '/training-plan' },
   { name: '我的绩点', path: '/gpa' },
-  { name: '选课', path: '/course-selection' }
+  { name: '选课', path: '/course-selection' },
+  { name: '我的考试', path: '/my-exams' }
 ]
 
 // 动态菜单

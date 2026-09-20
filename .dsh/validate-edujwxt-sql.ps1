@@ -18,7 +18,7 @@ $repo = 'D:\work\jwxt\EducationSystem'
 $tables = @('clazz','college','course','course_selection','major','score','student',
             'sys_user','teacher','teacher_evaluation','ai_tool_audit','training_plan',
             'plan_course','gpa_rule','room','class_time','course_apply','class_time_apply',
-            'selection_round','selection_round_scope')
+            'selection_round','selection_round_scope','exam_schedule')
 
 $sources = @(
   (Join-Path $repo 'edujwxt.sql'),
@@ -67,7 +67,8 @@ SELECT 'class_time',COUNT(*) FROM v_class_time UNION ALL
 SELECT 'course_apply',COUNT(*) FROM v_course_apply UNION ALL
 SELECT 'class_time_apply',COUNT(*) FROM v_class_time_apply UNION ALL
 SELECT 'selection_round',COUNT(*) FROM v_selection_round UNION ALL
-SELECT 'selection_round_scope',COUNT(*) FROM v_selection_round_scope;
+SELECT 'selection_round_scope',COUNT(*) FROM v_selection_round_scope UNION ALL
+SELECT 'exam_schedule',COUNT(*) FROM v_exam_schedule;
 "@ 2>$null | ForEach-Object { "  $_" }
 
 Write-Host '--- data integrity spot checks ---'
@@ -92,6 +93,17 @@ SELECT CONCAT('rounds open for DROPPING right now (expect 1): ', COUNT(*)) FROM 
 SELECT CONCAT('rounds with inverted windows: ', COUNT(*)) FROM v_selection_round WHERE select_start > select_end OR (drop_start IS NOT NULL AND drop_end IS NOT NULL AND drop_start > drop_end);
 SELECT CONCAT('selection_round_scope rows (expect 1): ', COUNT(*)) FROM v_selection_round_scope;
 SELECT CONCAT('course_selection has round_id column: ', COUNT(*)) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'v_course_selection' AND COLUMN_NAME = 'round_id';
+SELECT CONCAT('exam rows (expect 4): ', COUNT(*)) FROM v_exam_schedule;
+SELECT CONCAT('exam rows with null course_id: ', COUNT(*)) FROM v_exam_schedule WHERE course_id IS NULL;
+SELECT CONCAT('exam rows with null room_id: ', COUNT(*)) FROM v_exam_schedule WHERE room_id IS NULL;
+SELECT CONCAT('upcoming exams (expect 3): ', COUNT(*)) FROM v_exam_schedule WHERE exam_time >= NOW();
+SELECT CONCAT('exams with non-positive duration: ', COUNT(*)) FROM v_exam_schedule WHERE duration_minutes <= 0;
+-- Half-open interval sanity: no two exams may share a room with genuinely overlapping times.
+-- Touching intervals (one ends exactly when the next starts) are deliberately NOT a conflict.
+SELECT CONCAT('overlapping exams sharing a room: ', COUNT(*)) FROM v_exam_schedule a JOIN v_exam_schedule b
+  ON a.room_id = b.room_id AND a.id < b.id
+ WHERE a.exam_time < DATE_ADD(b.exam_time, INTERVAL b.duration_minutes MINUTE)
+   AND DATE_ADD(a.exam_time, INTERVAL a.duration_minutes MINUTE) > b.exam_time;
 "@ 2>$null | ForEach-Object { "  $_" }
 
 Write-Host '--- cleanup ---'

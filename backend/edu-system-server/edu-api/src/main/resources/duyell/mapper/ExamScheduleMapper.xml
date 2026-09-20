@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="duyell.mapper.ExamScheduleMapper">
+
+    <sql id="joinedColumns">
+        es.*, c.course_code as courseCode, c.course_name as courseName,
+        c.term as term, t.teacher_name as teacherName, r.room_name as roomName
+    </sql>
+
+    <sql id="joinedTables">
+        from exam_schedule es
+        join course c on es.course_id = c.id
+        left join teacher t on c.teacher_id = t.teacher_id
+        left join room r on es.room_id = r.id
+    </sql>
+
+    <select id="selectById" resultType="com.duyell.ExamSchedule">
+        select <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        where es.id = #{id}
+    </select>
+
+    <select id="list" resultType="com.duyell.ExamSchedule">
+        select <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        <where>
+            <if test="term != null and term != ''">
+                and c.term = #{term}
+            </if>
+            <if test="courseId != null">
+                and es.course_id = #{courseId}
+            </if>
+            <if test="examType != null and examType != ''">
+                and es.exam_type = #{examType}
+            </if>
+            <if test="status != null">
+                and es.status = #{status}
+            </if>
+        </where>
+        order by es.exam_time, es.id
+    </select>
+
+    <select id="listByCourse" resultType="com.duyell.ExamSchedule">
+        select <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        where es.course_id = #{courseId}
+        order by es.exam_time, es.id
+    </select>
+
+    <!--
+      学生的考试。范围＝该生**已选课程**的考试（没选的课不会去考）。
+      这里就按 exam_time 升序，前端自己分"待考/已考"；upcomingOnly 直接按时间过滤。
+    -->
+    <select id="listByStudent" resultType="com.duyell.ExamSchedule">
+        select distinct <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        join course_selection cs on cs.course_id = es.course_id and cs.student_id = #{studentId}
+        where es.status = 1
+        <if test="term != null and term != ''">
+            and c.term = #{term}
+        </if>
+        <if test="upcomingOnly">
+            and es.exam_time &gt;= NOW()
+        </if>
+        order by es.exam_time, es.id
+    </select>
+
+    <!--
+      考场冲突（半开区间！）：
+        existing.exam_time < newEnd  AND  existing.exam_time + duration > newStart
+      写成 <= / >= 会把"前一场 12:00 结束、后一场 12:00 开始"这对首尾相接的考试误判为冲突。
+    -->
+    <select id="selectRoomConflicts" resultType="com.duyell.ExamSchedule">
+        select <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        where es.status = 1
+          and es.room_id = #{roomId}
+          and es.exam_time &lt; #{endTime}
+          and date_add(es.exam_time, interval es.duration_minutes minute) &gt; #{startTime}
+        <if test="excludeExamId != null">
+            and es.id != #{excludeExamId}
+        </if>
+        order by es.exam_time
+    </select>
+
+    <!--
+      学生冲突：候选课程与其它课程**有共同考生**（两次 course_selection 自连接求交集），
+      且两场考试时间重叠。即"有学生要同时考两门"。
+    -->
+    <select id="selectStudentConflicts" resultType="com.duyell.ExamSchedule">
+        select distinct <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        join course_selection cs_other on cs_other.course_id = es.course_id
+        join course_selection cs_candidate
+             on cs_candidate.student_id = cs_other.student_id
+            and cs_candidate.course_id = #{courseId}
+        where es.status = 1
+          and es.course_id != #{courseId}
+          and es.exam_time &lt; #{endTime}
+          and date_add(es.exam_time, interval es.duration_minutes minute) &gt; #{startTime}
+        <if test="excludeExamId != null">
+            and es.id != #{excludeExamId}
+        </if>
+        order by es.exam_time
+    </select>
+
+    <!--
+      更新语义（刻意如此，写下来免得以后误会）：
+        · 必填字段（course_id / exam_type / exam_time / duration_minutes）用 <if> 判空 →
+          不传就**保留库里的值**（服务层也会先补齐，二者一致），客户端只改座位号时不必重发时间
+        · 可选字段（room_id / seat_range / invigilator / remark）**无条件写入** →
+          传 null 就是"清空"（考场待定、取消监考人），这是 PUT 的整替换语义
+      所以前端表单要提交完整对象；只想改一个字段的调用方，请把其它字段也带上。
+    -->
+    <update id="update">
+        update exam_schedule
+        <set>
+            <if test="courseId != null">
+                course_id = #{courseId},
+            </if>
+            <if test="examType != null and examType != ''">
+                exam_type = #{examType},
+            </if>
+            <if test="examTime != null">
+                exam_time = #{examTime},
+            </if>
+            <if test="durationMinutes != null">
+                duration_minutes = #{durationMinutes},
+            </if>
+            room_id = #{roomId},
+            seat_range = #{seatRange},
+            invigilator = #{invigilator},
+            remark = #{remark},
+            <if test="status != null">
+                status = #{status},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+
+    <select id="countActiveByCourseAndType" resultType="java.lang.Integer">
+        select count(*) from exam_schedule
+        where course_id = #{courseId} and exam_type = #{examType} and status = 1
+        <if test="excludeExamId != null">
+            and id != #{excludeExamId}
+        </if>
+    </select>
+
+</mapper>

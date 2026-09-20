@@ -3,7 +3,7 @@
 # Covers the P3 rules the user stated:
 #   * only after an admin OPENS a round may a student select; otherwise read-only
 #   * during the selection window a student may drop; otherwise a drop needs the
-#     supplementary(补退选) window
+#     supplementary() window
 # plus the documented six-check chain, one assertion group per check:
 #   1 round open  2 scope  3 credit cap  4 not already passed  5 no time clash  6 capacity
 #
@@ -36,13 +36,13 @@ $ID1 = '2023001'
 $ID2 = '2023002'
 
 # --- Chinese fragments, built from code points so this file stays ASCII-only ---
-$S_DROPONLY = "$([char]0x8865)$([char]0x9000)$([char]0x9009)"                                  # 补退选
-$S_NOROUND = "$([char]0x6CA1)$([char]0x6709)$([char]0x5DF2)$([char]0x5F00)$([char]0x542F)"      # 没有已开启
-$S_CREDITCAP = "$([char]0x5B66)$([char]0x5206)$([char]0x4E0A)$([char]0x9650)"                  # 学分上限
-$S_PASSED = "$([char]0x5DF2)$([char]0x901A)$([char]0x8FC7)"                                    # 已通过
-$S_FULL = "$([char]0x540D)$([char]0x989D)$([char]0x5DF2)$([char]0x6EE1)"                       # 名额已满
-$S_CLASH = "$([char]0x65F6)$([char]0x95F4)$([char]0x51B2)$([char]0x7A81)"                      # 时间冲突
-$S_NOTSEL = "$([char]0x8FD8)$([char]0x6CA1)$([char]0x6709)$([char]0x9009)"                     # 还没有选
+$S_DROPONLY = "$([char]0x8865)$([char]0x9000)$([char]0x9009)"                                  # 
+$S_NOROUND = "$([char]0x6CA1)$([char]0x6709)$([char]0x5DF2)$([char]0x5F00)$([char]0x542F)"      # 
+$S_CREDITCAP = "$([char]0x5B66)$([char]0x5206)$([char]0x4E0A)$([char]0x9650)"                  # 
+$S_PASSED = "$([char]0x5DF2)$([char]0x901A)$([char]0x8FC7)"                                    # 
+$S_FULL = "$([char]0x540D)$([char]0x989D)$([char]0x5DF2)$([char]0x6EE1)"                       # 
+$S_CLASH = "$([char]0x65F6)$([char]0x95F4)$([char]0x51B2)$([char]0x7A81)"                      # 
+$S_NOTSEL = "$([char]0x8FD8)$([char]0x6CA1)$([char]0x6709)$([char]0x9009)"                     # 
 
 function Check($name, $cond, $detail) {
   if ($cond) { $script:pass++; Write-Host ("  [PASS] " + $name) -ForegroundColor Green }
@@ -71,7 +71,9 @@ function Api($method, $path, $token, $body) {
   if ($token) { $headers['token'] = $token }
   $p = @{ Uri = ($base + $path); Method = $method; Headers = $headers; UseBasicParsing = $true; TimeoutSec = 25 }
   if ($null -ne $body) {
-    $p['ContentType'] = 'application/json'
+    #  charset=utf-8 is required: without it PowerShell encodes the body with the default
+    # codepage and replaces non-ASCII with '?'. See docs/.md (P4 section).
+    $p['ContentType'] = 'application/json; charset=utf-8'
     $p['Body'] = ($body | ConvertTo-Json -Depth 6)
   }
   $status = 0; $txt = ''
@@ -280,7 +282,7 @@ Check 'over-cap refusal names the cap' ($r.msg.Contains($S_CREDITCAP)) ("msg=" +
 # check 4: already passed the same course code
 $rowPassed = $rows | Where-Object { $_.course.id -eq $idPassed }
 Check 'already-passed course is blocked in the list' ($rowPassed.selectable -eq $false) 'selectable unexpectedly true'
-Check 'already-passed reason mentions 已通过' ($rowPassed.reason.Contains($S_PASSED)) ("reason=" + $rowPassed.reason)
+Check 'already-passed reason mentions ' ($rowPassed.reason.Contains($S_PASSED)) ("reason=" + $rowPassed.reason)
 $r = Api 'POST' "/course-selection/select/$idPassed" $stu1 $null
 Check 'selecting an already-passed course is refused' ($r.code -ne '200') (Brief $r)
 Check 'refusal says it is already passed' ($r.msg.Contains($S_PASSED)) ("msg=" + $r.msg)
@@ -322,7 +324,10 @@ $r = Api 'POST' "/selection-round/$roundId/status" $admin @{ status = 0 }
 Check 'admin closes the round -> 200' ($r.code -eq '200') (Brief $r)
 $r = Api 'GET' "/selection-round/current?term=$TERM_FIX" $stu1 $null
 Check 'after closing: cannot select' ($r.data.canSelect -eq $false) (Brief $r)
-$r = Api 'POST' "/course-selection/select/$idA" $stu1 $null
+# NOTE: select a course the student has NOT already selected. Picking A here would trip the
+# earlier duplicate-selection guard ("already selected") instead of the round check this
+# section is about -- a reminder that a negative assertion can pass/fail on the WRONG guard.
+$r = Api 'POST' "/course-selection/select/$idBig" $stu1 $null
 Check 'selecting while closed is refused' ($r.code -ne '200') (Brief $r)
 Check 'refusal says no round is open' ($r.msg.Contains($S_NOROUND)) ("msg=" + $r.msg)
 $r = Api 'DELETE' "/course-selection/$idA" $stu1 $null

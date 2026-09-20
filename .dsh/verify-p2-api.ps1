@@ -52,7 +52,9 @@ function Api($method, $path, $token, $body) {
   if ($token) { $headers['token'] = $token }
   $p = @{ Uri = ($base + $path); Method = $method; Headers = $headers; UseBasicParsing = $true; TimeoutSec = 25 }
   if ($null -ne $body) {
-    $p['ContentType'] = 'application/json'
+    #  charset=utf-8 is required: without it PowerShell encodes the body with the default
+    # codepage and replaces non-ASCII with '?'. See docs/.md (P4 section).
+    $p['ContentType'] = 'application/json; charset=utf-8'
     $p['Body'] = ($body | ConvertTo-Json -Depth 6)
   }
   $status = 0; $txt = ''

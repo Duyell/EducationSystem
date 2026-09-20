@@ -98,7 +98,12 @@ public class LoginInterceptor implements HandlerInterceptor {
             //    写操作（建轮次、开关、范围、删除）只有管理员能做——
             //    用户明确："只有管理员开启选课后学生才能选"。
             new AuthRule("/selection-round/current", Set.of("GET"), ADMIN, STUDENT),
-            new AuthRule("/selection-round/**", null, ADMIN)
+            new AuthRule("/selection-round/**", null, ADMIN),
+            // ---------- P4：考试安排 ----------
+            // 学生查"我的考试"；其余（排考、改、删）仅管理员。
+            // ⚠️ /exam/my 必须排在 /exam/** 之前，否则学生被后者拒掉。
+            new AuthRule("/exam/my", Set.of("GET"), ADMIN, STUDENT),
+            new AuthRule("/exam/**", null, ADMIN)
     );
 
     /**

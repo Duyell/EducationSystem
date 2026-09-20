@@ -181,7 +181,42 @@ WHERE c.`course_code` = 'CS105'
   AND NOT EXISTS (SELECT 1 FROM `class_time` WHERE `course_id` = c.id AND `weekday` = 2 AND `start_period` = 3);
 
 -- ----------------------------
--- 11. 重置自增主键
+-- 11. 示例考试安排（P4）
+--
+-- 同样放在本文件：考试要按 course_code 反查 course.id，只有这里 12 门课齐。
+--
+-- 时间用「今天 + N 天 + 固定时刻」而不是写死日期：写死的话过一阵子学生永远看不到
+-- "我下周有什么考试"，演示数据等于废了。四场覆盖两种情况：
+--   CS101/CS102/CS103 各一场未来期末；CS104 一场已过的补考（用于验证排序与"只看未来"）
+-- 2023001 选了 CS101-CS104，所以四场都会出现在"我的考试"里。
+-- 与 docs/sql/2026-09-20-p4-exam-migration.sql 的种子一致。
+-- ----------------------------
+INSERT INTO `exam_schedule` (`course_id`, `exam_type`, `exam_time`, `duration_minutes`, `room_id`, `seat_range`, `invigilator`, `status`)
+SELECT c.id, 'FINAL', DATE_ADD(DATE_ADD(CURDATE(), INTERVAL 7 DAY), INTERVAL 9 HOUR), 120, r.id, 'A区01-50', '王雨', 1
+FROM `course` c JOIN `room` r ON r.`room_name` = '教1-101'
+WHERE c.`course_code` = 'CS101'
+  AND NOT EXISTS (SELECT 1 FROM `exam_schedule` WHERE `course_id` = c.id AND `exam_type` = 'FINAL');
+
+INSERT INTO `exam_schedule` (`course_id`, `exam_type`, `exam_time`, `duration_minutes`, `room_id`, `seat_range`, `invigilator`, `status`)
+SELECT c.id, 'FINAL', DATE_ADD(DATE_ADD(CURDATE(), INTERVAL 8 DAY), INTERVAL 14 HOUR), 120, r.id, 'A区01-50', '李强', 1
+FROM `course` c JOIN `room` r ON r.`room_name` = '教1-102'
+WHERE c.`course_code` = 'CS102'
+  AND NOT EXISTS (SELECT 1 FROM `exam_schedule` WHERE `course_id` = c.id AND `exam_type` = 'FINAL');
+
+INSERT INTO `exam_schedule` (`course_id`, `exam_type`, `exam_time`, `duration_minutes`, `room_id`, `seat_range`, `invigilator`, `status`)
+SELECT c.id, 'FINAL', DATE_ADD(DATE_ADD(CURDATE(), INTERVAL 9 DAY), INTERVAL 9 HOUR), 120, r.id, 'B区01-60', '王雨,李强', 1
+FROM `course` c JOIN `room` r ON r.`room_name` = '教1-201'
+WHERE c.`course_code` = 'CS103'
+  AND NOT EXISTS (SELECT 1 FROM `exam_schedule` WHERE `course_id` = c.id AND `exam_type` = 'FINAL');
+
+INSERT INTO `exam_schedule` (`course_id`, `exam_type`, `exam_time`, `duration_minutes`, `room_id`, `seat_range`, `invigilator`, `status`)
+SELECT c.id, 'MAKEUP', DATE_ADD(DATE_SUB(CURDATE(), INTERVAL 20 DAY), INTERVAL 14 HOUR), 90, r.id, 'A区01-50', '王雨', 1
+FROM `course` c JOIN `room` r ON r.`room_name` = '教1-101'
+WHERE c.`course_code` = 'CS104'
+  AND NOT EXISTS (SELECT 1 FROM `exam_schedule` WHERE `course_id` = c.id AND `exam_type` = 'MAKEUP');
+
+-- ----------------------------
+-- 12. 重置自增主键
 -- ----------------------------
 -- (不要重置 college, major, clazz, course, course_selection, score, student, teacher 的自增值，
 --  因为后续可能还需要手动插入更多数据，保留当前最大值即可)

@@ -31,6 +31,7 @@ __screenshots__/
 .dsh/verify-p1-ui.diag.json
 .dsh/verify-p2-ui.diag.json
 .dsh/verify-p3-ui.diag.json
+.dsh/verify-p4-ui.diag.json
 
 # 系统文件
 .DS_Store

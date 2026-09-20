@@ -41,7 +41,7 @@
 ## 接续开发指南（每次继续本项目先读这一节）
 
 > 本节为「下次开工」而写：环境怎么起、怎么验证、哪些事在等用户确认。
-> 更新到 2026-09-20：Agent 主线（M1 阶段 0）＋**教务业务扩展 P1/P2/P3 均已完成**并推送 `origin/main`。
+> 更新到 2026-09-20：Agent 主线（M1 阶段 0）＋**教务业务扩展 P1/P2/P3/P4 均已完成**并推送 `origin/main`。
 
 ### 0. 快速定位
 
@@ -49,7 +49,7 @@
 |---|---|
 | 计划本身、里程碑与验收标准 | 本文档第三～七节 |
 | **教务业务扩展（培养计划/绩点→排课→选课→考试）该做什么** | `docs/教务业务扩展设计.md`（**权威**：业务规则、表设计、接口、分阶段计划、测试设计、【假设】汇总） |
-| **现在做到哪一步了** | 同上「进度追踪」表：**P1 ✅、P2 ✅、P3 ✅**，下一步 **P4 考试安排** |
+| **现在做到哪一步了** | 同上「进度追踪」表：**P1 ✅、P2 ✅、P3 ✅、P4 ✅**，下一步 **P5 Agent 工具补齐 + 评测** |
 | 已经做了什么、踩过什么坑 | `docs/开发记录.md`（追加式，**倒序**，最新在最上面） |
 | 前端该按什么规范写 | `docs/技能使用规范.md` + 项目级技能 `.dsh/skills/edu-frontend-rules.md` |
 | 现有 AI 模块怎么运作 | `docs/AI模块架构文档.md`（注意：**尚未更新到阶段 0 之后的状态**） |
@@ -115,7 +115,7 @@ java -jar edu-api\target\edu-api-0.0.1-SNAPSHOT.jar
 先起 Redis + 后端（见上节），业务类校验还需要 MySQL 在线。
 
 ```powershell
-# ---------- 后端单测：112 项（Agent 安全底座 + 绩点/学分 + 排课冲突 + 选课校验链）----------
+# ---------- 后端单测：129 项（安全底座 + 绩点/学分 + 排课 + 选课 + 考试）----------
 cd backend\edu-system-server; mvn -o -B test -pl edu-api -am
 
 # ---------- 业务扩展接口层（需 Redis + 后端已启动）----------
@@ -123,11 +123,13 @@ cd backend\edu-system-server; mvn -o -B test -pl edu-api -am
 .\.dsh\verify-p1-write.ps1    # 63 项：培养计划写接口（自带 fixture，可重复跑）
 .\.dsh\verify-p2-api.ps1      # 136 项：教室/冲突检测/两条审批流完整链路
 .\.dsh\verify-p3-api.ps1      # 106 项：选课轮次三种状态 + 六道校验链 + 补退选规则
+.\.dsh\verify-p4-api.ps1      # 91 项：考试安排 + 半开区间冲突边界
 
 # ---------- 浏览器层（需前端 5173 也在跑）----------
 node .dsh\verify-p1-ui.cjs    # 67 项：绩点/方案/计划维护三页
 node .dsh\verify-p2-ui.cjs    # 60 项：开课申请→审批→排课→冲突提示→课表
 node .dsh\verify-p3-ui.cjs    # 43 项：轮次三态渲染 + 学生选/退往返 + 菜单不越权
+node .dsh\verify-p4-ui.cjs    # 44 项：考试两页 + 前端算的待考/已考分段 + 半开区间说明
 
 # ---------- 新装库（建临时库导入，不影响现有库）----------
 .\.dsh\validate-edujwxt-sql.ps1
@@ -144,6 +146,21 @@ npm run build-only            # 沙箱下需提权：Vite 配置加载会 child_
   所以漏洞照样通过"的事故，也出过 PowerShell 把 1 条数据读成空、使断言看起来像"数据为空"的误报。
 - **含中文的文件（尤其是 `.ps1`）绝不用 PowerShell 的 `Get-Content`/`Set-Content` 往返改写**：
   PS 按 ANSI 读，中文会全变乱码。要批量改就用 write/edit 工具；校验脚本尽量写成 ASCII-only。
+- 🔥 **`.ps1` 必须 ASCII-only，并且改完要数一遍非 ASCII 字节**（这是 2026-09-20 踩的大坑）：
+  本项目的命令**实际由 Windows PowerShell 5.1 执行**（不是 pwsh 7），
+  **无 BOM 的 .ps1 会被按 ANSI/GBK 解码**；中文注释一旦跨行错位，
+  **下一行代码会被并进注释静默吃掉**——脚本照跑，只是少执行一行，极难排查。
+  自查（每个脚本都应为 0）：
+  ```powershell
+  foreach ($f in Get-ChildItem .dsh\*.ps1) {
+    $b = [System.IO.File]::ReadAllBytes($f.FullName)
+    "{0}: {1}" -f $f.Name, (@($b | Where-Object { $_ -gt 127 }).Count)
+  }
+  ```
+  必须在脚本里写中文时，用 `[char]0xXXXX` 码点拼接（现有脚本的 `$S_*` / `$CN_*` 常量就是这么做的）。
+- 🔥 **请求体里有中文时，`ContentType` 必须带 `charset=utf-8`**：
+  `Invoke-WebRequest -Body <字符串>` 不带 charset 时按默认代码页发送，中文变成 `?`
+  （实测 `"D区01-20"` 到服务端是 `"D??1-20"`）。**不要**改成传 `byte[]`——实测整批 400。
 
 > 🖥️ **浏览器验证需要一次性提权**：Playwright 启动 Chromium 走 `--remote-debugging-pipe`（命名管道），
 > 会被 workspace-write 沙箱以 `spawn EPERM` 拒绝。`npm run dev` / `build-only` 同理
@@ -171,15 +188,25 @@ npm run build-only            # 沙箱下需提权：Vite 配置加载会 child_
   **六道校验链只有一处实现**（`selectionBlocker`），选课提交与"可选课程列表"共用它，
   否则必然出现"列表说能选、提交却说不能"；
   状态与原因也只有一处（`evaluate`），判定顺序是"先开关、后范围、最后时间窗"。
-- **自动化验证总盘子**：后端单测 112 + 接口 31/63/136/106 + 浏览器 67/60/43 = **618 项**
+- **教务业务扩展 P4**（考试安排，含前端两页）：
+  **半开区间**判冲突（连续时钟）——与 P2 节次的**闭区间**刻意不同，
+  两处判据各自成文、都有边界测试，**不要"统一"**。
+- **自动化验证总盘子**：后端单测 129 + 接口 31/63/136/106/91 + 浏览器 67/60/43/44 = **770 项**
   —— 其中浏览器那两层是唯一能证明"数据真的画到屏幕上了"的，
   已各抓到过接口层与类型检查都发现不了的缺陷。
-- **五个反复出现的缺陷类别**（见 `docs/开发记录.md` 的（八）小节，写代码时逐条自查）：
+- ⚠️ **已知问题（未修）**：未知路径返回 `code:500 "系统繁忙"` 而不是 404。
+  后果不只是不语义化——**它让"路径写错"看起来像"服务器崩了"**（P4 时确实误导过一次排查）。
+  修法：把 `NoHandlerFoundException` / `NoResourceFoundException` 映射成 404。
+- **跨环境排查纪律**：断言"服务挂了"之前，先用一个**已知必然成功**的对比项校准
+  （路径前缀有没有 `/api`？端口是 8080 还是 5173？代理有没有生效？）。
+  P4 时"所有已认证请求都 500"的误报，根因就是直连 8080 却带了只存在于代理层的 `/api` 前缀。
+- **六个反复出现的缺陷类别**（见 `docs/开发记录.md` 各节，写代码时逐条自查）：
   ① Promise reject 未接住（`validate()` / `ElMessageBox.confirm` 取消时都是 reject）
   ② 派生方法不进报文（**record** 的派生方法不会被 Jackson 序列化；POJO 的 `isXxx()` 会）
   ③ 权限规则顺序（具体路径必须排在 `/**` 之前）
   ④ 断言不会失败（写得太弱，漏洞照样通过——写断言时先问"它怎么才能红"）
-  ⑤ 种子数据测不到边界（用例看着写了，其实那条分支永远进不去）
+  ⑤ 断言打在错误的守卫上（拿"已选过的课"去测"轮次未开启"，先命中更早的重复校验）
+  ⑥ 种子数据测不到边界（用例看着写了，其实那条分支永远进不去）
 
 ### 4. 待用户确认的事项（不要在未确认时擅自处理）
 
@@ -193,15 +220,21 @@ npm run build-only            # 沙箱下需提权：Vite 配置加载会 child_
 
 ### 5. 下一步（两条线，用户指定哪条就走哪条）
 
-**A. 教务业务扩展主线（当前进度最靠前的一条）**：**P4 考试安排**
-- 权威依据：`docs/教务业务扩展设计.md` §5 的 P4 小节 + §3.2(9) 的 `exam_schedule` 表设计。
-- 表：`exam_schedule`（`exam_type` 期末/补考/期中、考试时间与时长、考场 `room_id`、
-  座位号段、监考教师、状态、备注）；**复用 P2 的 `room` 表**。
-- 服务：`ExamService`（`listByStudent` 学生看自己的考试、`listByCourse`、管理员维护）。
-- 接口：`/exam/**`（写＝admin）、`/exam/my`（GET＝student），权限照例在
-  `LoginInterceptor` 里登记（**顺序敏感**：`/exam/my` 要排在 `/exam/**` 之前）。
-- 可与 P2 的冲突检测联动：同一考场同一时段不应安排两场考试（判据同闭区间那一条）。
-- 做完照例补：接口校验脚本 + 浏览器校验脚本 + 开发者记录 + 本节状态。
+**A. 教务业务扩展主线（当前进度最靠前的一条）**：**P5 Agent 工具补齐 + 评测**
+- 权威依据：`docs/教务业务扩展设计.md` §4.5（11 个新工具 + 依赖表 + 风险等级）与 §5 的 P5 小节。
+- 业务表已全部就位（`training_plan`/`plan_course`/`gpa_rule`/`room`/`class_time`/
+  `course_apply`/`class_time_apply`/`selection_round`/`selection_round_scope`/`exam_schedule`），
+  §4.5 里 `get_my_training_plan`、`audit_my_graduation`、`get_my_gpa`、`get_my_exams`、
+  `list_my_class_times`、`check_time_conflict`、`get_selection_status`、`recommend_courses`
+  的依赖全部满足。
+- 写操作（`submit_course_apply`、`apply_class_time`、`approve_course_apply`）必须标
+  `DANGEROUS`，走已有的确认卡片链路（M1 已建好，有测试）。
+- **工具描述必须写明"参数省略时的行为"**——这是已踩过的坑（P1 前修过一次，
+  导致模型反问而不是列出全部）。
+- 各角色 system prompt 要补新能力说明；golden set 每个工具 2~3 条 + 多步场景
+  （毕业审核、推荐课程），用本地 Ollama 跑闭环。
+- 验收（设计文档原话）：学生问"我学分够毕业吗""我该选什么课""我下周有考试吗"，
+  Agent 能跨表推理并给出**可核对**的答案。
 
 **B. Agent 主线：M2 框架化迁移**（详见第三节阶段 1）
 1. **先做最小的 Spring AI 接入验证**：新建 `edu-agent` 模块 → 接 `spring-ai-bom` → 迁移一个工具

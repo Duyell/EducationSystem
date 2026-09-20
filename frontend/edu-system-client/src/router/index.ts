@@ -117,6 +117,18 @@ const routes = [
         path: 'course-selection',
         component: () => import('../views/course-selection/index.vue'),
         meta: { roles: ['student'] }
+      },
+      {
+        // 考试安排（管理员）：列表 + CRUD，新建/编辑时实时预检冲突
+        path: 'exam-manage',
+        component: () => import('../views/exam-manage/index.vue'),
+        meta: { roles: ['admin'] }
+      },
+      {
+        // 我的考试（学生）：待考与已考分段，只含本人已选课程的考试
+        path: 'my-exams',
+        component: () => import('../views/my-exams/index.vue'),
+        meta: { roles: ['student'] }
       }
     ]
   }

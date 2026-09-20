@@ -549,4 +549,37 @@ INSERT INTO `selection_round_scope` (`round_id`, `grade`, `major_id`, `college_i
 SELECT id, '2023', NULL, NULL FROM `selection_round`
 WHERE `round_name` = '2025-2026-1 第一轮选课（未开启）';
 
+-- ----------------------------
+-- Table structure for exam_schedule
+-- 考试安排（P4）
+-- ⚠️ 时间冲突判据与 P2 的节次冲突不同：节次是离散格子（闭区间），
+--    考试是连续时钟区间（半开区间，"前一场 12:00 结束/后一场 12:00 开始"不算冲突）。
+-- ----------------------------
+DROP TABLE IF EXISTS `exam_schedule`;
+CREATE TABLE `exam_schedule`  (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `course_id` int NOT NULL,
+  `exam_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'FINAL',
+  `exam_time` datetime NOT NULL,
+  `duration_minutes` int NOT NULL DEFAULT 120,
+  `room_id` int NULL DEFAULT NULL,
+  `seat_range` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `invigilator` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `status` tinyint NOT NULL DEFAULT 1,
+  `remark` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_exam_course`(`course_id` ASC) USING BTREE,
+  INDEX `idx_exam_time`(`exam_time` ASC) USING BTREE,
+  INDEX `idx_exam_room`(`room_id` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of exam_schedule
+-- 种子考试**不放在这里**：考试按 course_code 反查 course.id，而本文件只建了 CS101/CS102
+-- 两门课（其余 10 门在 seed_data.sql 里）。放在本文件会因查不到课程而写入 NULL 主键失败。
+-- 见 seed_data.sql 第 11 节。
+-- ----------------------------
+
 SET FOREIGN_KEY_CHECKS = 1;
