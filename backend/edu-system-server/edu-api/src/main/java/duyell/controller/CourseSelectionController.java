@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * @author duyell
- * 选课/退课：业务校验与并发控制见 CourseSelectionService
+ * 选课/退课：六道校验与并发控制见 CourseSelectionService
  */
 @RequiredArgsConstructor
 @RestController
@@ -46,6 +46,20 @@ public class CourseSelectionController {
     public Result<List<Integer>> myCourseIds(HttpServletRequest request) {
         String studentId = getCurrentStudentId(request);
         return Result.success(courseSelectionService.listMyCourseIds(studentId));
+    }
+
+    /**
+     * 某学期的可选课程（学生选课页）。
+     *
+     * <p>每门课都带上「本人是否已选」「现在能不能选」「不能选的原因」，
+     * 页面据此渲染"未开放只能看"与逐门的冲突/已修/满员提示。
+     * 判定与提交选课**共用同一套校验链**，不会出现列表说能选、提交却说不能。
+     */
+    @GetMapping("/selectable")
+    public Result<List<CourseSelectionService.SelectableCourse>> selectable(
+            @RequestParam String term, HttpServletRequest request) {
+        String studentId = getCurrentStudentId(request);
+        return Result.success(courseSelectionService.listSelectableCourses(studentId, term));
     }
 
     private String getCurrentStudentId(HttpServletRequest request) {

@@ -17,7 +17,8 @@ $repo = 'D:\work\jwxt\EducationSystem'
 
 $tables = @('clazz','college','course','course_selection','major','score','student',
             'sys_user','teacher','teacher_evaluation','ai_tool_audit','training_plan',
-            'plan_course','gpa_rule','room','class_time','course_apply','class_time_apply')
+            'plan_course','gpa_rule','room','class_time','course_apply','class_time_apply',
+            'selection_round','selection_round_scope')
 
 $sources = @(
   (Join-Path $repo 'edujwxt.sql'),
@@ -64,7 +65,9 @@ SELECT 'gpa_rule',COUNT(*) FROM v_gpa_rule UNION ALL
 SELECT 'room',COUNT(*) FROM v_room UNION ALL
 SELECT 'class_time',COUNT(*) FROM v_class_time UNION ALL
 SELECT 'course_apply',COUNT(*) FROM v_course_apply UNION ALL
-SELECT 'class_time_apply',COUNT(*) FROM v_class_time_apply;
+SELECT 'class_time_apply',COUNT(*) FROM v_class_time_apply UNION ALL
+SELECT 'selection_round',COUNT(*) FROM v_selection_round UNION ALL
+SELECT 'selection_round_scope',COUNT(*) FROM v_selection_round_scope;
 "@ 2>$null | ForEach-Object { "  $_" }
 
 Write-Host '--- data integrity spot checks ---'
@@ -82,6 +85,13 @@ SELECT CONCAT('room with null/blank name: ', COUNT(*)) FROM v_room WHERE room_na
 SELECT CONCAT('class_time rows (expect 3): ', COUNT(*)) FROM v_class_time;
 SELECT CONCAT('class_time with null course_id: ', COUNT(*)) FROM v_class_time WHERE course_id IS NULL;
 SELECT CONCAT('class_time with null room_id: ', COUNT(*)) FROM v_class_time WHERE room_id IS NULL;
+SELECT CONCAT('selection rounds (expect 3): ', COUNT(*)) FROM v_selection_round;
+SELECT CONCAT('enabled rounds (expect 2): ', COUNT(*)) FROM v_selection_round WHERE status = 1;
+SELECT CONCAT('rounds open for SELECTING right now (expect 1): ', COUNT(*)) FROM v_selection_round WHERE status = 1 AND NOW() BETWEEN select_start AND select_end;
+SELECT CONCAT('rounds open for DROPPING right now (expect 1): ', COUNT(*)) FROM v_selection_round WHERE status = 1 AND drop_start IS NOT NULL AND NOW() BETWEEN drop_start AND drop_end;
+SELECT CONCAT('rounds with inverted windows: ', COUNT(*)) FROM v_selection_round WHERE select_start > select_end OR (drop_start IS NOT NULL AND drop_end IS NOT NULL AND drop_start > drop_end);
+SELECT CONCAT('selection_round_scope rows (expect 1): ', COUNT(*)) FROM v_selection_round_scope;
+SELECT CONCAT('course_selection has round_id column: ', COUNT(*)) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'v_course_selection' AND COLUMN_NAME = 'round_id';
 "@ 2>$null | ForEach-Object { "  $_" }
 
 Write-Host '--- cleanup ---'

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="duyell.mapper.SelectionRoundScopeMapper">
+
+    <sql id="joinedColumns">
+        srs.*, m.major_name as majorName, co.college_name as collegeName
+    </sql>
+
+    <sql id="joinedTables">
+        from selection_round_scope srs
+        left join major m on srs.major_id = m.id
+        left join college co on srs.college_id = co.id
+    </sql>
+
+    <select id="listByRound" resultType="com.duyell.SelectionRoundScope">
+        select <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        where srs.round_id = #{roundId}
+        order by srs.id
+    </select>
+
+    <!-- 列表页一次取多个轮次的范围，避免逐行查询 -->
+    <select id="listByRounds" resultType="com.duyell.SelectionRoundScope">
+        select <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        where srs.round_id in
+        <foreach collection="roundIds" item="rid" separator="," open="(" close=")">
+            #{rid}
+        </foreach>
+        order by srs.round_id, srs.id
+    </select>
+
+</mapper>

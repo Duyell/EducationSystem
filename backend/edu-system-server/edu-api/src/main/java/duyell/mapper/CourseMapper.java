@@ -95,6 +95,22 @@ public interface CourseMapper {
     List<Course> list(@Param("courseName") String courseName,@Param("teacherName") String teacherName, @Param("teacherId") String teacherId, @Param("collegeId") Integer collegeId, @Param("credit") Integer credit, @Param("classHour") Integer classHour, @Param("maxStudent") Integer maxStudent);
 
     /**
+     * 按学期查全部开课（学生选课页用）。
+     *
+     * <p>选课页要一次看到本学期的所有课并逐门判断"能不能选"，
+     * 所以这里不加分页——一个学期的开课量是有界的。
+     */
+    @Select("""
+            select c.*, t.teacher_name as teacherName, co.college_name as collegeName
+            from course c
+            left join teacher t on c.teacher_id = t.teacher_id
+            left join college co on c.college_id = co.id
+            where c.term = #{term}
+            order by c.course_code, c.id
+            """)
+    List<Course> listByTerm(@Param("term") String term);
+
+    /**
      * 统计课程数量
      * @return 课程数量
      */

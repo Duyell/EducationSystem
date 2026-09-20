@@ -66,6 +66,18 @@ public interface ClassTimeMapper {
                                       @Param("endWeek") Integer endWeek,
                                       @Param("excludeCourseId") Integer excludeCourseId);
 
+    /**
+     * 学生的**选课时间冲突**：候选课程的每个上课时间，与该生已选课程的上课时间逐对比较。
+     *
+     * <p>返回的是"已选课程那边"的排课行（即与候选课程相撞的那些课），便于告诉学生
+     * "这门课和你的哪门课撞了"。
+     *
+     * <p>⚠️ 候选课程若**还没有排课**，这里查不出任何冲突——这是正确行为：
+     * 没排课的课不可能和别人撞。选课校验链里它排在第 5 道，不会因此误判为冲突。
+     */
+    List<ClassTime> selectStudentConflicts(@Param("studentId") String studentId,
+                                           @Param("courseId") Integer courseId);
+
     @Insert("""
             insert into class_time(course_id, weekday, start_period, end_period, start_week, end_week, room_id)
             values(#{courseId}, #{weekday}, #{startPeriod}, #{endPeriod}, #{startWeek}, #{endWeek}, #{roomId})

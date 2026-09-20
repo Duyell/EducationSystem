@@ -419,3 +419,115 @@ export interface RoomQuery {
   minCapacity?: number
   status?: number
 }
+
+// ===================== P3：选课轮次 / 选课与补退选 =====================
+// 与后端 com.duyell.SelectionRound / SelectionRoundScope 及
+// duyell.service.SelectionRoundService / CourseSelectionService 的 record 一一对应，
+// 见 docs/教务业务扩展设计.md §2.5、§3.2(7)(8)
+
+/**
+ * 选课轮次（SelectionRound）。
+ *
+ * 「轮次开启」与「时间窗」是**两个独立条件**：`status=1` 只表示管理员打开了开关，
+ * 还要看当前时间落没落在窗口里。前端据此自己算「可选 / 只能退 / 只能看」三种状态
+ * （报文里没有这种字段，见 utils/selection.ts 的 roundPhaseOf）。
+ */
+export interface SelectionRound {
+  id?: number
+  /** 如：2024-2025-1 第一轮选课 */
+  roundName: string
+  term: string
+  /** ISO 本地时间串，如 2030-01-01T08:00:00（后端 LocalDateTime） */
+  selectStart?: string
+  selectEnd?: string
+  /** 补退选窗口，可空 */
+  dropStart?: string
+  dropEnd?: string
+  /** 1=开启 0=关闭 */
+  status?: number
+  /** 本轮学分上限，可空 = 不限 */
+  maxCredits?: number
+  createTime?: string
+  updateTime?: string
+  /** 装配字段（不落库）：空数组表示"不限" */
+  scopes?: SelectionRoundScope[]
+}
+
+/**
+ * 轮次适用范围（SelectionRoundScope）。
+ *
+ * 三个条件都可空，**空 = 不限**；一条范围记录都不配 = 全年级全专业都可选。
+ * 后端**刻意拒绝**全空的范围记录（那等于"不限"，用"没有范围行"表达即可）。
+ */
+export interface SelectionRoundScope {
+  id?: number
+  roundId?: number
+  /** 限定年级，空 = 不限 */
+  grade?: string
+  /** 限定专业，空 = 不限 */
+  majorId?: number
+  /** 限定学院，空 = 不限 */
+  collegeId?: number
+  // ---- 展示用冗余字段（不落库） ----
+  majorName?: string
+  collegeName?: string
+}
+
+/**
+ * 当前选课状态（SelectionRoundService.SelectionStatus）。
+ *
+ * ⚠️ 报文里**只有**下列字段：后端刻意没有 `readOnly()` 之类的派生方法
+ * （Jackson 只序列化 record 组件）。需要"是否只读"就自己推导：
+ * `!canSelect && !canDrop`。这条坑在 P1 的 `AuditResult.satisfied()` 上已经踩过一次。
+ */
+export interface SelectionStatus {
+  /** 学期内是否存在已开启的轮次 */
+  roundOpen: boolean
+  canSelect: boolean
+  canDrop: boolean
+  roundId?: number
+  roundName?: string
+  term: string
+  /** 本轮学分上限，可空 = 不限 */
+  maxCredits?: number
+  /** 可直接展示给用户的中文说明 */
+  reason?: string
+}
+
+/** 一门可选课程（CourseSelectionService.SelectableCourse） */
+export interface SelectableCourse {
+  course: Course
+  /** 本人是否已选 */
+  selected: boolean
+  /** 现在能不能选；false 时 reason 说明原因 */
+  selectable: boolean
+  /** **第一条**拦住它的校验原因（轮次/范围/学分上限/已修过/时间冲突/容量），可直接展示 */
+  reason?: string | null
+}
+
+/** 轮次新建/修改的提交体（POST/PUT /selection-round） */
+export interface SelectionRoundForm {
+  id?: number
+  roundName: string
+  term: string
+  selectStart: string
+  selectEnd: string
+  dropStart?: string
+  dropEnd?: string
+  status?: number
+  maxCredits?: number
+}
+
+/** 适用范围提交体（POST /selection-round/scope） */
+export interface ScopeForm {
+  roundId: number
+  grade?: string
+  majorId?: number
+  collegeId?: number
+}
+
+/** 轮次列表的筛选条件（空字符串 = 不筛该项） */
+export interface SelectionRoundQuery {
+  term: string
+  status: number | ''
+}

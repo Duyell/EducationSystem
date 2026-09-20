@@ -88,10 +88,12 @@ CREATE TABLE `course_selection`  (
   `id` int NOT NULL AUTO_INCREMENT,
   `course_id` int NOT NULL,
   `student_id` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `round_id` int NULL DEFAULT NULL,
   `select_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uk_course_selection_course_student`(`course_id` ASC, `student_id` ASC) USING BTREE,
-  INDEX `idx_course_selection_student`(`student_id` ASC) USING BTREE
+  INDEX `idx_course_selection_student`(`student_id` ASC) USING BTREE,
+  INDEX `idx_selection_round`(`round_id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -485,5 +487,66 @@ CROSS JOIN (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT
 -- 两门课（其余 10 门在 seed_data.sql 里）。放在本文件会因查不到课程而写入 NULL 主键失败。
 -- 见 seed_data.sql 第 10 节。
 -- ----------------------------
+
+-- ----------------------------
+-- Table structure for selection_round
+-- 选课轮次（P3）：管理员控制开关 + 选课/补退选时间窗
+-- ----------------------------
+DROP TABLE IF EXISTS `selection_round`;
+CREATE TABLE `selection_round`  (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `round_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `term` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `select_start` datetime NOT NULL,
+  `select_end` datetime NOT NULL,
+  `drop_start` datetime NULL DEFAULT NULL,
+  `drop_end` datetime NULL DEFAULT NULL,
+  `status` tinyint NOT NULL DEFAULT 0,
+  `max_credits` decimal(5, 1) NULL DEFAULT NULL,
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_round_term_status`(`term` ASC, `status` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for selection_round_scope
+-- 轮次适用范围：grade/major_id/college_id 均可空，NULL=不限
+-- ----------------------------
+DROP TABLE IF EXISTS `selection_round_scope`;
+CREATE TABLE `selection_round_scope`  (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `round_id` int NOT NULL,
+  `grade` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `major_id` int NULL DEFAULT NULL,
+  `college_id` int NULL DEFAULT NULL,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_scope_round`(`round_id` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of selection_round / selection_round_scope
+-- 三个轮次分别覆盖三种状态；时间窗用 NOW() 相对计算，写死日期的话过一阵子演示数据就全过期了。
+-- 与 docs/sql/2026-09-20-p3-selection-round-migration.sql 一致。
+--   ① 2024-2025-1 开启中 → 可选可退
+--   ② 2024-2025-2 补退选 → 只能退（选课窗口已过、退课窗口开放）
+--   ③ 2025-2026-1 未开启 → 只能看
+-- ----------------------------
+INSERT INTO `selection_round` (`round_name`, `term`, `select_start`, `select_end`, `status`, `max_credits`)
+VALUES ('2024-2025-1 第一轮选课', '2024-2025-1',
+        DATE_SUB(NOW(), INTERVAL 7 DAY), DATE_ADD(NOW(), INTERVAL 30 DAY), 1, 30.0);
+
+INSERT INTO `selection_round` (`round_name`, `term`, `select_start`, `select_end`, `drop_start`, `drop_end`, `status`, `max_credits`)
+VALUES ('2024-2025-2 补退选', '2024-2025-2',
+        DATE_SUB(NOW(), INTERVAL 60 DAY), DATE_SUB(NOW(), INTERVAL 30 DAY),
+        DATE_SUB(NOW(), INTERVAL 3 DAY), DATE_ADD(NOW(), INTERVAL 10 DAY), 1, 30.0);
+
+INSERT INTO `selection_round` (`round_name`, `term`, `select_start`, `select_end`, `status`, `max_credits`)
+VALUES ('2025-2026-1 第一轮选课（未开启）', '2025-2026-1',
+        DATE_SUB(NOW(), INTERVAL 1 DAY), DATE_ADD(NOW(), INTERVAL 30 DAY), 0, 30.0);
+
+INSERT INTO `selection_round_scope` (`round_id`, `grade`, `major_id`, `college_id`)
+SELECT id, '2023', NULL, NULL FROM `selection_round`
+WHERE `round_name` = '2025-2026-1 第一轮选课（未开启）';
 
 SET FOREIGN_KEY_CHECKS = 1;

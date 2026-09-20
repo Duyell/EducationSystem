@@ -92,7 +92,13 @@ public class LoginInterceptor implements HandlerInterceptor {
             new AuthRule("/course-apply", Set.of("GET"), ADMIN),
             // 详情：教师可查自己的；归属校验放在 Controller（要读到数据才知道属主）
             new AuthRule("/course-apply/*", Set.of("GET"), ADMIN, TEACHER),
-            new AuthRule("/course-apply/**", null, ADMIN)
+            new AuthRule("/course-apply/**", null, ADMIN),
+            // ---------- P3：选课轮次 ----------
+            // ⚠️ /current 是学生要用的（"我现在能不能选/退"），必须排在 /selection-round/** 之前；
+            //    写操作（建轮次、开关、范围、删除）只有管理员能做——
+            //    用户明确："只有管理员开启选课后学生才能选"。
+            new AuthRule("/selection-round/current", Set.of("GET"), ADMIN, STUDENT),
+            new AuthRule("/selection-round/**", null, ADMIN)
     );
 
     /**

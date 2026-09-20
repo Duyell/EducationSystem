@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="duyell.mapper.SelectionRoundMapper">
+
+    <select id="list" resultType="com.duyell.SelectionRound">
+        select * from selection_round
+        <where>
+            <if test="term != null and term != ''">
+                and term = #{term}
+            </if>
+            <if test="status != null">
+                and status = #{status}
+            </if>
+        </where>
+        order by term desc, id
+    </select>
+
+    <update id="update">
+        update selection_round
+        <set>
+            <if test="roundName != null and roundName != ''">
+                round_name = #{roundName},
+            </if>
+            <if test="term != null and term != ''">
+                term = #{term},
+            </if>
+            <if test="selectStart != null">
+                select_start = #{selectStart},
+            </if>
+            <if test="selectEnd != null">
+                select_end = #{selectEnd},
+            </if>
+            <if test="dropStart != null">
+                drop_start = #{dropStart},
+            </if>
+            <if test="dropEnd != null">
+                drop_end = #{dropEnd},
+            </if>
+            <if test="status != null">
+                status = #{status},
+            </if>
+            <if test="maxCredits != null">
+                max_credits = #{maxCredits},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+
+</mapper>

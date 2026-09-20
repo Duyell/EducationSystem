@@ -96,4 +96,40 @@
         </if>
     </select>
 
+    <!--
+      学生的选课时间冲突（P3 选课校验第 5 道）。
+
+      class_time 自连接：candidate = 想选的课，exists_ct = 该生已选课程的排课。
+      重叠判据与 selectConflicts **逐字一致**（闭区间）——这是全项目冲突语义的同一个定义，
+      写成 < 就会把"相接"误判成冲突。
+
+      exists_ct.course_id != candidate.course_id：避免把候选课自己算成冲突
+      （同一门课再选一次属于"重复选课"，由唯一约束和查重处理，不是时间冲突）。
+
+      学期通过 ec.term = cc.term 对齐：只有同一学期的课才会撞。
+    -->
+    <select id="selectStudentConflicts" resultType="com.duyell.ClassTime">
+        select exists_ct.id, exists_ct.course_id, exists_ct.weekday,
+               exists_ct.start_period, exists_ct.end_period,
+               exists_ct.start_week, exists_ct.end_week, exists_ct.room_id,
+               ec.course_code as courseCode, ec.course_name as courseName,
+               ec.teacher_id as teacherId, ec.term as term,
+               er.room_name as roomName
+        from class_time candidate
+        join course cc on candidate.course_id = cc.id
+        join class_time exists_ct
+             on exists_ct.weekday = candidate.weekday
+            and exists_ct.start_period &lt;= candidate.end_period
+            and exists_ct.end_period &gt;= candidate.start_period
+            and exists_ct.start_week &lt;= candidate.end_week
+            and exists_ct.end_week &gt;= candidate.start_week
+        join course ec on exists_ct.course_id = ec.id and ec.term = cc.term
+        join course_selection cs on cs.course_id = exists_ct.course_id
+                                and cs.student_id = #{studentId}
+        left join room er on exists_ct.room_id = er.id
+        where candidate.course_id = #{courseId}
+          and exists_ct.course_id != candidate.course_id
+        order by exists_ct.weekday, exists_ct.start_period
+    </select>
+
 </mapper>

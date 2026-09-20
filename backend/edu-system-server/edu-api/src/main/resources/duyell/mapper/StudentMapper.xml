@@ -99,6 +99,7 @@
                c.major_id     as majorId,
                c.clazz_name   as clazzName,
                m.major_name   as majorName,
+               m.college_id   as collegeId,
                col.college_name as collegeName
         from student s
         left join clazz c on s.clazz_id = c.id

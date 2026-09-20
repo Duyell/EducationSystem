@@ -42,4 +42,7 @@ public class Student {
 
     /** 专业 id（来自 clazz.major_id，联表查询带出） */
     private Integer majorId;
+
+    /** 学院 id（来自 major.college_id，联表查询带出）——选课轮次的适用范围要按学院匹配 */
+    private Integer collegeId;
 }

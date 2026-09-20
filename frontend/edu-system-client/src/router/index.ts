@@ -105,6 +105,18 @@ const routes = [
         path: 'room',
         component: () => import('../views/room/index.vue'),
         meta: { roles: ['admin'] }
+      },
+      {
+        // 选课轮次管理（管理员）：开关 + 时间窗 + 适用范围
+        path: 'selection-round',
+        component: () => import('../views/selection-round/index.vue'),
+        meta: { roles: ['admin'] }
+      },
+      {
+        // 选课（学生）：可选课程 + 我的已选；补退选期间只能退课
+        path: 'course-selection',
+        component: () => import('../views/course-selection/index.vue'),
+        meta: { roles: ['student'] }
       }
     ]
   }

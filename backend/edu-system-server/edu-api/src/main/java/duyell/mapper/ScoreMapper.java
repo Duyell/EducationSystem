@@ -78,4 +78,24 @@ public interface ScoreMapper {
      */
     @Select("select count(*) from score")
     int countScore();
+
+    /**
+     * 该生是否**已通过**某个课程代码的课（选课校验第 4 道："未修过"）。
+     *
+     * <p>判据是"已通过"而不是"有成绩记录"：挂科的学生应当允许**重修**，
+     * 而已经过了的课再选一遍没有意义（也会让同一 course_code 出现多条成绩）。
+     *
+     * <p>课程代码是跨学期认课的键（见设计文档 §3.1），所以这里按
+     * {@code course.course_code} 比对，而不是 course_id。
+     */
+    @Select("""
+            select count(*)
+            from score s
+            join course c on s.course_id = c.id
+            where s.student_id = #{studentId}
+              and c.course_code = #{courseCode}
+              and s.passed = 1
+            """)
+    int countPassedByCourseCode(@Param("studentId") String studentId,
+                                @Param("courseCode") String courseCode);
 }
