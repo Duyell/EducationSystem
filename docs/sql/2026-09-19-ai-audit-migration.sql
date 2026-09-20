@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS `ai_tool_audit` (
   `risk_level`   varchar(16)  NOT NULL                COMMENT '风险等级：READ_ONLY/WRITE/DANGEROUS',
   `args_json`    text         NULL                    COMMENT '调用参数（JSON）',
   `result_json`  text         NULL                    COMMENT '执行结果（JSON，已脱敏；越权时记录拒绝原因）',
-  `status`       varchar(16)  NOT NULL                COMMENT '状态：SUCCESS/FAILED/DENIED/REJECTED_BY_USER',
+  `status`       varchar(32)  NOT NULL                COMMENT '状态：SUCCESS/FAILED/DENIED/REJECTED_BY_USER/INVALID_ARGUMENTS/DUPLICATE_SKIPPED',
   `error_msg`    text         NULL                    COMMENT '失败或拒绝的详情（仅服务端与审计可见）',
   `confirm_id`   varchar(64)  NULL DEFAULT NULL       COMMENT '危险操作确认令牌（经人工确认的操作可关联）',
   `request_id`   varchar(64)  NULL DEFAULT NULL       COMMENT '幂等键；唯一约束保证同一请求不重复落库',

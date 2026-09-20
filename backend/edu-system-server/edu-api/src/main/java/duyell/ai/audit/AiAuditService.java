@@ -25,14 +25,24 @@ public class AiAuditService {
     private static final int MAX_TEXT_LEN = 60000; // text 列上限约 64KB，留出余量
     private static final String TRUNCATED = "...[truncated]";
 
-    /** 与建表脚本一致的定长列宽度；越界必须显式处理，否则整条审计会被 MySQL 拒绝写入 */
-    private static final int MAX_USER_ID_LEN = 32;
-    private static final int MAX_ROLE_LEN = 16;
-    private static final int MAX_TOOL_NAME_LEN = 64;
-    private static final int MAX_RISK_LEVEL_LEN = 16;
-    private static final int MAX_STATUS_LEN = 16;
-    private static final int MAX_CONFIRM_ID_LEN = 64;
-    private static final int MAX_REQUEST_ID_LEN = 64;
+    /**
+     * 与建表脚本一致的定长列宽度；越界必须显式处理，否则整条审计会被 MySQL 拒绝写入。
+     *
+     * <p><b>本常量与数据库列宽必须同时对齐</b>：只放宽其中一个没有意义 ——
+     * 应用层更窄就会在这里被截断，列更窄就会被 MySQL 截断或拒绝写入。
+     * 曾踩过：只把 `status` 列从 16 扩到 32、却漏改这里的 16，
+     * 于是 `INVALID_ARGUMENTS`(17 字符) 仍被应用层截成 `INVALID_ARGUMENT`。
+     * {@code AiAuditServiceTest#auditLimitsMatchDatabaseColumns} 现已同时校验两侧。
+     *
+     * <p>可见性为包级（非 private）以便测试直接引用这两个契约值，避免测试里重复硬编码。
+     */
+    static final int MAX_USER_ID_LEN = 32;
+    static final int MAX_ROLE_LEN = 16;
+    static final int MAX_TOOL_NAME_LEN = 64;
+    static final int MAX_RISK_LEVEL_LEN = 16;
+    static final int MAX_STATUS_LEN = 32;
+    static final int MAX_CONFIRM_ID_LEN = 64;
+    static final int MAX_REQUEST_ID_LEN = 64;
 
     private final AiToolAuditMapper auditMapper;
     private final ObjectMapper objectMapper;
