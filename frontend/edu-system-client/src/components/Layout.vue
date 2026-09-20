@@ -98,7 +98,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, House } from '@element-plus/icons-vue'
 import axios from '@/utils/request'
-import { ro } from 'element-plus/es/locale/index.mjs'
 
 const router = useRouter()
 const route = useRoute()
@@ -119,11 +118,13 @@ const adminMenuList = [
   { name: '专业管理', path: '/major' },
   { name: '班级管理', path: '/clazz' },
   { name: '课程管理', path: '/course' },
-  { name: '成绩管理', path: '/score' }
+  { name: '成绩管理', path: '/score' },
+  { name: '培养计划', path: '/training-plan-manage' }
 ]
 
-// 教师/学生公共菜单
-const commonMenuList = [
+// 教师菜单：不含培养方案/绩点——用户明确要求教师没有绩点相关功能；
+// 若放进公共菜单，教师会点到被路由守卫弹回首页的菜单项。
+const teacherMenuList = [
   { name: '首页', path: '/index' },
   { name: 'AI 助手', path: '/ai' },
   { name: '课程', path: '/course' },
@@ -131,9 +132,20 @@ const commonMenuList = [
   { name: '教评', path: '/evaluate' }
 ]
 
+// 学生菜单：在教师菜单基础上增加本人专属的方案与绩点
+const studentMenuList = [
+  ...teacherMenuList,
+  { name: '我的方案', path: '/training-plan' },
+  { name: '我的绩点', path: '/gpa' }
+]
+
 // 动态菜单
 const menuList = computed(() => {
-  return userRole.value === 'admin' ? adminMenuList : commonMenuList
+  switch (userRole.value) {
+    case 'admin': return adminMenuList
+    case 'teacher': return teacherMenuList
+    default: return studentMenuList
+  }
 })
 
 // 导航激活项（匹配当前路由）

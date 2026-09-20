@@ -69,6 +69,24 @@ const routes = [
         path: 'evaluate',
         component: () => import('../views/evaluate/index.vue'),
         meta: { roles: ['teacher', 'student'] }
+      },
+      {
+        // 我的绩点：后端 /gpa/my 对学生开放；admin 访问会得到空数据（无本人成绩）
+        path: 'gpa',
+        component: () => import('../views/gpa/index.vue'),
+        meta: { roles: ['admin', 'student'] }
+      },
+      {
+        // 我的培养方案（学生）：后端 /training-plan/my
+        path: 'training-plan',
+        component: () => import('../views/training-plan/index.vue'),
+        meta: { roles: ['admin', 'student'] }
+      },
+      {
+        // 培养计划维护（管理员）：列表 + 方案 CRUD + 课程明细
+        path: 'training-plan-manage',
+        component: () => import('../views/training-plan-manage/index.vue'),
+        meta: { roles: ['admin'] }
       }
     ]
   }
