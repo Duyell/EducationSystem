@@ -26,10 +26,10 @@
 
 **阶段 0（安全底座）已全部完成：8/8。** 后端单测 39 项 + 端到端安全断言 16 项，全绿。
 
-**当前验证缺口**：本机未配置 `AI_API_KEY`，「agent 循环 → 工具执行 → 审计落库」的完整链路
+**当前验证缺口**：云 `AI_API_KEY` 未配置，「agent 循环 → 工具执行 → 审计落库」的完整链路
 尚未经真实 LLM 端到端验证；已完成的证据是单元/集成测试（真实 MySQL + 真实 Redis）与真实 HTTP 安全断言。
 其中参数校验与限流两条链路不需要模型即可验证，已充分覆盖。
-**待办**：配置 API Key 后补一次真实对话验证。
+**待办**：用本地 Ollama（`qwen2.5:7b`，见第 1.1 节）补一次真实对话验证 —— 已具备条件，无需云 Key。
 
 **已知既有缺陷（未修）**：`AiChatService.sendSse()` 只捕获 `IOException`，
 客户端中途断开时 `SseEmitter.send()` 抛的 `IllegalStateException` 会冒泡成误导性的
@@ -73,7 +73,35 @@ npm run type-check # 类型检查
 ```
 
 外部依赖现状：MySQL 8.4.7（库 `edujwxt`，10 张表 + 种子数据 + 安全约束齐全）、Redis 5.0.14.1。
-**`AI_API_KEY` 未配置**，因此 `/ai/chat` 只能验证到"明确报错"这一层，无法真实调模型。
+**云 `AI_API_KEY` 未配置**，因此 `/ai/chat` 只能验证到"明确报错"这一层 —— 但**可用本地 Ollama 补上**，见下节。
+
+### 1.1 用本地 Ollama 做真实 LLM 验证（已具备条件）
+
+本机已装 Ollama（`C:\Users\53473\AppData\Local\Programs\Ollama\ollama.exe`，服务在 11434），现有模型：
+
+| 模型 | 用途 |
+|---|---|
+| `qwen2.5:7b`（4.7GB） | **Agent 对话与工具调用验证**（补上"未过真实 LLM"的缺口） |
+| `bge-m3`（1.2GB） | 嵌入模型，**M3 做 RAG 时可直接用**，无需再引入云 embedding |
+| `nomic-embed-text`（274MB） | 嵌入模型备选 |
+
+Ollama 提供 OpenAI 兼容端点，因此**不改代码**即可接入：
+
+```powershell
+$env:AI_BASE_URL = 'http://localhost:11434/v1'
+$env:AI_MODEL    = 'qwen2.5:7b'
+$env:AI_API_KEY  = 'ollama'     # 占位值，Ollama 不校验
+cd backend\edu-system-server
+java -jar edu-api\target\edu-api-0.0.1-SNAPSHOT.jar
+```
+
+**⚠️ 先确认再动手**：`OpenAiClient` 有一道前置校验——`apiKey` 为空/空白时**直接返回错误、根本不发请求**。
+所以走 Ollama 必须给非空占位 key。若要让"本地模型无需 key"真正成立，需改 `OpenAiClient` 的校验逻辑
+（按 base-url 判断，或加 `ai.allow-empty-key` 开关）。**这属于代码改动，未确认前不要做。**
+
+> 用本地模型的额外好处：**零 API 成本**，可反复跑（M5 的 golden set 回归尤其需要）。
+> 但 7B 模型的工具调用能力弱于云端大模型，适合验证**链路是否通**
+> （事件协议、确认卡片、审计落库、幂等、限流），**不适合**作为工具选择准确率的基准。
 
 ### 2. 当前验证方式（改完代码跑这三样）
 
