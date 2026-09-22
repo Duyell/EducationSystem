@@ -50,3 +50,9 @@ ai:
     max-iterations: ${AI_MAX_ITERATIONS:5}
     # 单次对话内最大工具调用总次数
     max-tool-calls-per-chat: ${AI_MAX_TOOL_CALLS_PER_CHAT:20}
+
+academic:
+  warning:
+    # 学业预警阈值：未通过课程学分累计达到该值即提示学生（JW-01 §5）
+    # 只提示、不自动处理；学生确认（标记已读）后不再重复提示，情况变严重才再次提示
+    failed-credit-threshold: ${ACADEMIC_WARNING_THRESHOLD:8}

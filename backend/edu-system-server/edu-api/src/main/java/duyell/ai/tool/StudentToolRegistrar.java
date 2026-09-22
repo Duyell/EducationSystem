@@ -61,6 +61,7 @@ public class StudentToolRegistrar implements InitializingBean {
     private final ExamService examService;
     private final SelectionRoundService selectionRoundService;
     private final ScheduleService scheduleService;
+    private final AcademicWarningService academicWarningService;
     private final ClassTimeMapper classTimeMapper;
 
     private static final String[] WEEKDAY_CN = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
@@ -606,6 +607,33 @@ public class StudentToolRegistrar implements InitializingBean {
                                 + " 条上课时间" + (unscheduled > 0 ? "；其中 " + unscheduled + " 门尚未排课" : "")
                                 + "。");
                     }
+                    return out;
+                })
+        ));
+
+        // ---------------------------------------------------------------- 学业预警（JW-01 §5）
+        registry.register("student", new ToolDefinition(
+                "get_my_academic_warning", "我的学业预警",
+                "查询本人学业预警状态：**未通过课程**（考核不及格且补考未通过）的**学分累计**是否达到阈值，"
+                        + "以及未通过课程清单。学生问「我有没有学业预警」「我挂了几门」「多少学分没过」时使用。"
+                        + "无参数，只读。预警**只是提示**，不会自动产生留级、退学等任何处理；"
+                        + "严重情况的处理由教务人工决定。",
+                noParams(),
+                RiskLevel.READ_ONLY,
+                (args, userId, role) -> json(() -> {
+                    AcademicWarningService.WarningStatus st = academicWarningService.statusFor(userId);
+                    Map<String, Object> out = new LinkedHashMap<>();
+                    out.put("warned", st.warned());
+                    out.put("failedCredits", st.failedCredits());
+                    out.put("failedCourseCount", st.failedCourseCount());
+                    out.put("threshold", st.threshold());
+                    out.put("courses", st.courses());
+                    String credits = st.failedCredits().stripTrailingZeros().toPlainString();
+                    String limit = st.threshold().stripTrailingZeros().toPlainString();
+                    out.put("message", st.warned()
+                            ? "你已触发学业预警：未通过 " + st.failedCourseCount() + " 门课程，累计 " + credits
+                              + " 学分，已达到阈值 " + limit + " 学分。建议尽快与辅导员沟通重修安排。"
+                            : "你当前未触发学业预警：未通过课程累计 " + credits + " 学分，未达到阈值 " + limit + " 学分。");
                     return out;
                 })
         ));

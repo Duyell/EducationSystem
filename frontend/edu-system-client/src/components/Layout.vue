@@ -98,6 +98,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, House } from '@element-plus/icons-vue'
 import axios from '@/utils/request'
+import { useAcademicWarning } from '@/composables/useAcademicWarning'
 
 const router = useRouter()
 const route = useRoute()
@@ -227,6 +228,9 @@ const currentWeek = computed(() => {
 })
 
 // ====================== 4. 生命周期（彻底修复） ======================
+// 学业预警：登录进入系统后检查一次（只弹一次，学生确认后记水位线；详见 composable 注释）
+const { checkAndNotify: checkAcademicWarning } = useAcademicWarning()
+
 onMounted(async () => {
   // 1. 立即加载用户信息
   const loginUser = JSON.parse(sessionStorage.getItem('user') || '{}')
@@ -234,6 +238,9 @@ onMounted(async () => {
   userName.value = loginUser.name || '用户'
   const avatar = loginUser.avatar
   userAvatar.value = avatar && avatar.startsWith('http') ? avatar : 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
+
+  // 学业预警提示（学生专属；内部已处理"只查一次"与异常，不影响页面）
+  void checkAcademicWarning()
 
   // 2. 等待路由完全就绪后加载首页数据
   await nextTick()

@@ -646,3 +646,35 @@ export interface ExamQuery {
   examType: ExamType | ''
   courseId?: number
 }
+
+// ===================== 学业预警（JW-01 §5） =====================
+// 与后端 AcademicWarningService.WarningStatus 一一对应。
+// ⚠️ 后端用 record 承载，只序列化 record 组件——所以这里**不要**期待任何"派生字段"。
+
+/** 触发预警的一门未通过课程 */
+export interface AcademicWarningCourse {
+  courseId: number
+  courseCode: string
+  courseName: string
+  credit: number
+  /** 原始总成绩（可能为 null，如只录了补考成绩） */
+  totalScore: number | null
+  makeupScore: number | null
+}
+
+/** 学业预警状态（是否预警 / 是否需要弹通知 / 未通过明细） */
+export interface AcademicWarningStatus {
+  /** 当前是否达到预警条件 */
+  warned: boolean
+  /** 是否需要弹通知（达到条件 **且** 超过已确认的水位线） */
+  shouldNotify: boolean
+  /** 未通过课程学分累计 */
+  failedCredits: number
+  failedCourseCount: number
+  /** 当前阈值（配置项，默认 8 学分） */
+  threshold: number
+  /** 上次已确认的水位线；从未确认为 null */
+  lastNotifiedCredits: number | null
+  lastReadAt: string | null
+  courses: AcademicWarningCourse[]
+}

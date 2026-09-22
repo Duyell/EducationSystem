@@ -582,4 +582,24 @@ CREATE TABLE `exam_schedule`  (
 -- 见 seed_data.sql 第 11 节。
 -- ----------------------------
 
+-- ----------------------------
+-- Table structure for academic_warning（学业预警已读水位线，JW-01 §5）
+-- 语义见 docs/sql/2026-09-20-academic-warning-migration.sql：
+-- 只在学生点"我知道了"时插一行（记录当时的未通过学分累计与阈值快照），
+-- 之后当前值超过该水位线才再次提示 —— 即"只弹一次，情况变严重才再弹"。
+-- ----------------------------
+DROP TABLE IF EXISTS `academic_warning`;
+CREATE TABLE `academic_warning`  (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `student_id` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '学号',
+  `failed_credits` decimal(6,2) NOT NULL COMMENT '确认时的未通过学分累计（水位线）',
+  `failed_course_count` int NOT NULL DEFAULT 0 COMMENT '确认时的未通过课程门数',
+  `threshold` decimal(6,2) NOT NULL COMMENT '确认时的预警阈值（快照）',
+  `read_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '学生确认（已读）时间',
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_warning_student_credits`(`student_id` ASC, `failed_credits` ASC) USING BTREE,
+  INDEX `idx_warning_student`(`student_id` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic COMMENT = '学业预警已读水位线';
+
 SET FOREIGN_KEY_CHECKS = 1;

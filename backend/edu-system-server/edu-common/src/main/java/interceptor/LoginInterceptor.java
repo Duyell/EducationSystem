@@ -71,6 +71,10 @@ public class LoginInterceptor implements HandlerInterceptor {
             new AuthRule("/gpa/**", null, ADMIN),
             // 培养计划见 TRAINING_PLAN_RULES（需在其前缀规则中放行学生的 /my）
 
+            // ---------- 学业预警（JW-01 §5）----------
+            // 学生看/确认**本人**预警（学号取自 token）；教师没有该功能。
+            new AuthRule("/academic-warning/**", null, ADMIN, STUDENT),
+
             // ---------- P2：排课 / 教室 / 开课申请 ----------
             // ⚠️ 同样顺序敏感：越具体的路径必须排在 /xxx/** 之前，
             //    否则教师会被后面的 ADMIN 规则拒掉（或反过来越权放行）。
