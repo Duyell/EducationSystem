@@ -50,12 +50,17 @@ import java.util.Map;
  */
 @Component
 @RequiredArgsConstructor
-public class StudentDeclarativeTools {
+public class StudentDeclarativeTools implements DeclarativeToolGroup {
 
     private final CourseSelectionMapper courseSelectionMapper;
     private final CourseMapper courseMapper;
     private final CourseSelectionService courseSelectionService;
     private final ObjectMapper objectMapper;
+
+    @Override
+    public String role() {
+        return "student";
+    }
 
     @Tool(name = "get_my_courses",
             description = "查询**当前登录学生本人**已选的课程列表（含课程名、授课教师、学期、学分）。"

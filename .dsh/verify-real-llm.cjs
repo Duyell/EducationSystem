@@ -9,15 +9,19 @@
  * 这要求真正的异步并行，PowerShell 写起来很别扭。
  *
  * 用法：node .dsh/verify-real-llm.cjs [--message "自定义消息"] [--no-confirm]
+ *      [--user 10001] [--password 123456]   # 默认用学生 2023001；教师/管理员用例靠这两个参数
  */
 const http = require('node:http');
 
 const BASE = { host: 'localhost', port: 8080 };
-const STUDENT = { username: '2023001', password: '123456' };
 const args = process.argv.slice(2);
 const argVal = (name, dflt) => {
   const i = args.indexOf(name);
   return i >= 0 && args[i + 1] ? args[i + 1] : dflt;
+};
+const STUDENT = {
+  username: argVal('--user', '2023001'),
+  password: argVal('--password', '123456'),
 };
 const MESSAGE = argVal('--message', '帮我选课，课程ID是5');
 const AUTO_CONFIRM = !args.includes('--no-confirm');

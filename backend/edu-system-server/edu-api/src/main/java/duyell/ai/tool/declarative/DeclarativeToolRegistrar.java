@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * 把声明式工具**注册（覆盖）**进 {@link ToolRegistry}。
+ * 把声明式工具按角色**注册（覆盖）**进 {@link ToolRegistry}。
  *
  * <p><b>为什么是 {@link SmartInitializingSingleton} 而不是 {@code InitializingBean}</b>：
  * 手写注册器（{@code StudentToolRegistrar} 等）是在 {@code afterPropertiesSet} 里注册的，
@@ -23,6 +23,9 @@ import java.util.List;
  * <p>覆盖是有意的：手写实现留在代码里作一个版本周期的回归对照（计划 1.4），
  * 但同一时刻只有一个在跑。{@code registerOverride} 会说明"谁接管了谁"，不当作重复注册告警。
  *
+ * <p><b>批量迁移的用法</b>：新增一个实现 {@link DeclarativeToolGroup} 的 Bean 即可，
+ * 本类不需要改——角色与工具的对应关系由各组的 {@code role()} 显式声明。
+ *
  * @author duyell
  */
 @Slf4j
@@ -32,21 +35,33 @@ public class DeclarativeToolRegistrar implements SmartInitializingSingleton {
 
     private final ToolRegistry registry;
     private final DeclarativeToolScanner scanner;
-    private final StudentDeclarativeTools studentTools;
+    /** 所有声明式工具组（Spring 会把实现该接口的 Bean 全部注入进来） */
+    private final List<DeclarativeToolGroup> groups;
 
     @Override
     public void afterSingletonsInstantiated() {
-        // 目前只迁了学生工具试点；后续按角色逐个加进来即可（教师/管理员同理）
-        List<ToolDefinition> studentDefinitions = scanner.scan("student", studentTools);
-        if (studentDefinitions.isEmpty()) {
-            log.warn("声明式学生工具一个都没扫到：检查 @Tool 方法是否 public、类是否为 Spring Bean");
+        if (groups == null || groups.isEmpty()) {
+            log.warn("没有任何声明式工具组：检查 {} 的实现类是否被 Spring 扫描到",
+                    DeclarativeToolGroup.class.getSimpleName());
             return;
         }
-        for (ToolDefinition definition : studentDefinitions) {
-            registry.registerOverride("student", definition);
+        int total = 0;
+        for (DeclarativeToolGroup group : groups) {
+            List<ToolDefinition> definitions = scanner.scan(group.role(), group);
+            if (definitions.isEmpty()) {
+                log.warn("声明式工具组 [{}] 一个工具都没扫到：检查 @Tool 方法是否 public",
+                        group.getClass().getSimpleName());
+                continue;
+            }
+            for (ToolDefinition definition : definitions) {
+                registry.registerOverride(group.role(), definition);
+            }
+            total += definitions.size();
+            log.info("声明式工具接管完成: role={}, 共 {} 个 -> {}",
+                    group.role(), definitions.size(),
+                    definitions.stream().map(ToolDefinition::name).toList());
         }
-        log.info("声明式工具接管完成: role=student, 共 {} 个 -> {}",
-                studentDefinitions.size(),
-                studentDefinitions.stream().map(ToolDefinition::name).toList());
+        log.info("声明式工具接管汇总: {} 个工具组, {} 个工具",
+                groups.size(), total);
     }
 }

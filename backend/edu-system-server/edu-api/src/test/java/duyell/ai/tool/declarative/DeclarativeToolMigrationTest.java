@@ -20,6 +20,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -137,6 +138,38 @@ class DeclarativeToolMigrationTest {
                 "教师那份必须还是教师实现（学生实现只在 student 角色下接管）");
         assertTrue(registry.getToolsByRole("student").stream()
                 .anyMatch(d -> "select_course".equals(d.name())));
+        // 两边都改成声明式之后，同名工具仍必须是两份定义（否则 (十九) 那个覆盖 bug 会原样复活）
+        ToolDefinition studentTool = tool("student", "get_my_courses");
+        ToolDefinition teacherTool = tool("teacher", "get_my_courses");
+        assertNotSame(studentTool.executor(), teacherTool.executor(),
+                "两个角色的 get_my_courses 必须是不同的实现，不能被合并成一个");
+        assertFalse(studentTool.description().equals(teacherTool.description()),
+                "面向模型的描述也必须各按角色写（学生问'我选了什么课'≠教师问'我教什么课'）");
+    }
+
+    /** 教师声明式工具：返回的是**该教师自己的**课程，而不是全部课程 */
+    @Test
+    void teacherDeclarativeToolReturnsOnlyOwnCourses() throws Exception {
+        String teacherId = "10001";
+        ToolExecutionResult result = registry.executeForRole(
+                tool("teacher", "get_my_courses"), "teacher", Map.of(), teacherId);
+        assertTrue(result.isSuccess(), "执行应成功，实际 " + result.status() + " / " + result.errorDetail());
+
+        List<Map<String, Object>> rows = objectMapper.readValue(result.payload(),
+                new TypeReference<>() {
+                });
+        assertFalse(rows.isEmpty(), "教师 10001 名下应有课程（种子数据）");
+        assertTrue(rows.stream().allMatch(r -> teacherId.equals(r.get("teacherId"))),
+                "只应返回本人课程，实际=" + rows);
+
+        // 另一位教师看到的必须不是同一份（证明过滤真的按传入身份生效，而不是恒返回全表）
+        ToolExecutionResult other = registry.executeForRole(
+                tool("teacher", "get_my_courses"), "teacher", Map.of(), "10004");
+        List<Map<String, Object>> otherRows = objectMapper.readValue(other.payload(),
+                new TypeReference<>() {
+                });
+        assertFalse(otherRows.stream().anyMatch(r -> teacherId.equals(r.get("teacherId"))),
+                "不同教师不应看到 10001 的课程");
     }
 
     /** 数据正确性：声明式版本必须返回该生真实的已选课程（不是空列表） */
