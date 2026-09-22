@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +74,7 @@ public class DeclarativeToolScanner {
         MethodToolCallback callback = buildCallback(bean, method, tool);
         org.springframework.ai.tool.definition.ToolDefinition frameworkDef = callback.getToolDefinition();
         Map<String, Object> parameters = readSchema(frameworkDef.inputSchema(), tool.name());
+        applyParamConstraints(method, parameters, tool.name());
 
         log.info("声明式工具已就绪: role={}, name={}, risk={}, 参数={}",
                 role, frameworkDef.name(), meta.riskLevel(), parameters.get("properties"));
@@ -88,6 +90,56 @@ public class DeclarativeToolScanner {
 
         return new ToolDefinition(frameworkDef.name(), meta.displayName(),
                 frameworkDef.description(), parameters, meta.riskLevel(), executor);
+    }
+
+    /**
+     * 把 {@link ParamConstraint} 里的取值约束**追加**到框架生成的 Schema 上。
+     *
+     * <p>框架的 {@code @ToolParam} 只有 description/required，表达不了 enum/minimum/maximum，
+     * 而手写版工具是有这些的（成绩 0~100、评分 1~5、角色三选一…）。
+     * 迁移时静默丢掉它们，等于让模型看不到取值边界。
+     *
+     * <p>对不上属性名就**启动失败**：约束被悄悄丢弃的症状是"模型偶尔传越界值"，
+     * 比"服务起不来"难查一个数量级。
+     */
+    @SuppressWarnings("unchecked")
+    private void applyParamConstraints(Method method, Map<String, Object> parameters, String toolName) {
+        Object propertiesNode = parameters.get("properties");
+        if (!(propertiesNode instanceof Map)) {
+            return;
+        }
+        Map<String, Object> properties = (Map<String, Object>) propertiesNode;
+
+        for (Parameter parameter : method.getParameters()) {
+            ParamConstraint constraint = parameter.getAnnotation(ParamConstraint.class);
+            if (constraint == null) {
+                continue;
+            }
+            String name = parameter.getName();
+            Object propertyNode = properties.get(name);
+            if (!(propertyNode instanceof Map)) {
+                throw new IllegalStateException(String.format(
+                        "声明式工具 [%s] 的参数约束对不上属性名：方法形参叫 %s，"
+                                + "而框架生成的 Schema 属性是 %s。形参名必须与 Schema 属性名一致"
+                                + "（编译需带 -parameters），否则约束会被静默丢弃",
+                        toolName, name, properties.keySet()));
+            }
+            Map<String, Object> property = (Map<String, Object>) propertyNode;
+
+            if (constraint.options().length > 0) {
+                property.put("enum", List.of(constraint.options()));
+            }
+            if (constraint.min() != Long.MIN_VALUE) {
+                property.put("minimum", constraint.min());
+            }
+            if (constraint.max() != Long.MAX_VALUE) {
+                property.put("maximum", constraint.max());
+            }
+            log.info("参数约束已合并: tool={}, 参数={}, enum={}, min={}, max={}",
+                    toolName, name, List.of(constraint.options()),
+                    constraint.min() == Long.MIN_VALUE ? "-" : constraint.min(),
+                    constraint.max() == Long.MAX_VALUE ? "-" : constraint.max());
+        }
     }
 
     /**
@@ -115,7 +167,8 @@ public class DeclarativeToolScanner {
     }
 
     /** 框架给出的是 JSON Schema 字符串；本项目内部用 Map 传递（校验器与 payload 都吃 Map） */
-    private Map<String, Object> readSchema(String inputSchema, String toolName) {        if (inputSchema == null || inputSchema.isBlank()) {
+    private Map<String, Object> readSchema(String inputSchema, String toolName) {
+        if (inputSchema == null || inputSchema.isBlank()) {
             return Map.of("type", "object", "properties", Map.of());
         }
         try {

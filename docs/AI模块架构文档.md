@@ -582,9 +582,9 @@ clear(id) → 删除该会话消息
 - 会话的 `role` 与当前登录角色不一致时拒绝：两套提示词与工具白名单混进同一个上下文是越权风险。
 - 没有有效 `conversationId` 时**兜底新建**，不降级为无记忆对话（否则用户以为在接着上文说，实际上下文已丢）。
 
-### 8.5 声明式工具（`@Tool` 迁移，2026-09-22 试点）
+### 8.5 声明式工具（`@Tool` 迁移，2026-09-22 **全部 33 个完成**）
 
-M2 计划 1.3：把工具从"手写 Lambda 注册"改为"框架声明式方法"。**试点迁了 2 个**（一读一写）：
+M2 计划 1.3：把工具从"手写 Lambda 注册"改为"框架声明式方法"。**学生 17 / 教师 7 / 管理员 9 已全部迁移**：
 
 ```java
 @Tool(name = "select_course", description = "为当前登录学生本人选一门课……")
@@ -597,15 +597,21 @@ public String selectCourse(
 | 关注点 | 谁提供 |
 |---|---|
 | 工具声明、参数 JSON Schema、JSON→参数绑定、反射调用 | **框架**（`@Tool`/`@ToolParam`/`MethodToolCallback`/`JsonSchemaGenerator`） |
-| 角色白名单、参数二次校验、危险操作确认、审计、风险等级 | **本项目**（`ToolRegistry`/`AiChatService`）——与工具怎么写无关 |
+| 角色白名单、参数二次校验、危险操作确认、审计、风险等级 | **本项目**（`ToolRegistry`/`AgentRuntime`）——与工具怎么写无关 |
 
 - `DeclarativeToolScanner` 把 `@Tool` 方法转成本项目的 `ToolDefinition`（Schema **直接取框架生成的那份**，避免两份漂移）；
 - `DeclarativeToolRegistrar` 是 `SmartInitializingSingleton`，在所有单例建好后**覆盖**同名手写工具
   （若用 `InitializingBean`，Bean 顺序不确定，可能被手写实现反过来覆盖）；
-- 调用者身份 `userId` 只经 `ToolContext` 传入，**不进参数 Schema**（否则模型能改成别人的学号）；取不到就失败（fail closed）。
-- 两个坑：`MethodToolCallback.Builder.build()` 要求显式提供 `ToolDefinition`（不会从注解推导）；
-  **单个对象参数会被框架再套一层参数名**（`{"request":{"courseId":...}}`），与平铺契约不一致——
-  故试点使用平铺的 `@ToolParam` 形参。详见 `docs/开发记录.md`（二十一）。
+- 调用者身份 `userId` 只经 `ToolContext` 传入，**不进参数 Schema**（否则模型能改成别人的学号）；取不到就失败（fail closed）；
+- **`@ParamConstraint(options/min/max)`**：`@ToolParam` 只有 description/required，表达不了 enum/minimum/maximum，
+  由扫描器**在框架 Schema 上追加**（描述/必填/类型仍以框架为唯一来源）；对不上属性名直接启动失败；
+- **`DeclarativeMigrationCoverageTest`**：覆盖闸门——每个角色"注册集合 == 声明式集合"，专挡漏迁。
+
+四个必须知道的坑（详见 `docs/开发记录.md` (二十一)(二十三)）：
+1. `MethodToolCallback.Builder.build()` 要求显式提供 `ToolDefinition`（不会从注解推导）；
+2. **单个对象参数**会被框架再套一层参数名（`{"request":{"courseId":...}}`），与平铺契约不一致 → 用平铺 `@ToolParam`；
+3. `@ToolParam.required` **默认 true**：可选参数必须显式 `required = false`，否则模型省略它会被参数校验器直接拒掉；
+4. 注解里写错一个字符会**连带打挂 Lombok**，报错是一堆 `找不到符号: builder()`/`log`，要看**第一处**真正的语法错误。
 
 ### 8.6 Agent 运行时与事件契约（1.4，方案 B）
 
