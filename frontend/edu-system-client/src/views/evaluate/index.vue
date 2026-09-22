@@ -49,7 +49,12 @@
 
       <el-table :data="evaluationList" border class="crud-table" stripe v-loading="loading" empty-text="暂无数据">
         <el-table-column prop="courseName" label="课程名称" min-width="160" />
-        <el-table-column prop="studentName" label="评价学生" min-width="100" />
+        <!-- 匿名评教：教师能看到评价内容，但看不到提交人（2026-09-22 确认） -->
+        <el-table-column label="提交人" width="100">
+          <template #default>
+            <el-tag type="info" size="small">匿名</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="评分" width="150">
           <template #default="{ row }">
             <el-rate :model-value="row.score" :max="5" disabled show-score score-template="{value}分" />

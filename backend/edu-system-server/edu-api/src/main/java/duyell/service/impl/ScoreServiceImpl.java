@@ -32,6 +32,9 @@ public class ScoreServiceImpl implements ScoreService {
     /** 成绩计算精度。与 score 表的 decimal(6,3) 保持一致（设计文档 §3.3：支持 75.76 这类分数） */
     private static final int SCORE_SCALE = 3;
 
+    /** 成绩上限：百分制（JW-05 §1.1） */
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
+
     @Override
     public PageResult<Score> page(Integer pageNum, Integer pageSize, Integer studentId, Integer courseId, String term) {
         Page<Score> pageResult = PageHelper.startPage(pageNum, pageSize);
@@ -41,6 +44,7 @@ public class ScoreServiceImpl implements ScoreService {
 
     @Override
     public void add(Score score) {
+        validateRange(score);
         // 总分统一由服务端计算（平时*0.4 + 考试*0.6），不信任前端传入值
         score.setTotalScore(calcTotal(score));
         // passed 是派生字段，只在此处维护（设计文档 §3.3 风险 2）
@@ -72,6 +76,7 @@ public class ScoreServiceImpl implements ScoreService {
                 score.setMakeupScore(existing.getMakeupScore());
             }
         }
+        validateRange(score);
         score.setTotalScore(calcTotal(score));
         score.setPassed(calcPassed(score.getTotalScore(), score.getMakeupScore()));
         scoreMapper.update(score);
@@ -80,6 +85,28 @@ public class ScoreServiceImpl implements ScoreService {
     @Override
     public Score selectById(Integer scoreId) {
         return scoreMapper.selectById(scoreId);
+    }
+
+    /**
+     * 成绩取值范围校验：0~100（可空＝尚未录入）。
+     *
+     * <p>2026-09-22 按作者确认补上。此前**完全没有范围校验**（数据库只是 {@code decimal(6,3)}），
+     * 录 999 分也能存下去。放在 service 是刻意的：界面与 AI 助手两条录入路径都必须过这里
+     * （AI 工具的 Schema 里另加了 0~100，但 Schema 只是提示，**服务端才是硬闸门**）。
+     */
+    private static void validateRange(Score score) {
+        checkOne("平时成绩", score.getUsualScore());
+        checkOne("考试成绩", score.getExamScore());
+        checkOne("补考成绩", score.getMakeupScore());
+    }
+
+    private static void checkOne(String label, BigDecimal value) {
+        if (value == null) {
+            return;
+        }
+        if (value.compareTo(BigDecimal.ZERO) < 0 || value.compareTo(HUNDRED) > 0) {
+            throw new BusinessException(label + "必须在 0~100 之间（当前 " + value.toPlainString() + "）");
+        }
     }
 
     /** 总分 = 平时成绩*0.4 + 考试成绩*0.6 */

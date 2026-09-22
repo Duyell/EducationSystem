@@ -44,7 +44,8 @@ public class EvaluationController {
             @RequestParam(defaultValue = "10") Integer pageSize,
             HttpServletRequest request) {
         String teacherId = getCurrentUsername(request);
-        PageResult<TeacherEvaluation> page = evaluationService.page(pageNum, pageSize, null, null, teacherId);
+        // 走 pageForTeacher：教师能看到评价内容，但**看不到提交人**（匿名评教，2026-09-22 确认）
+        PageResult<TeacherEvaluation> page = evaluationService.pageForTeacher(pageNum, pageSize, teacherId);
         return Result.success(page);
     }
 

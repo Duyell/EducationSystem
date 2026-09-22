@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import duyell.mapper.*;
 import duyell.service.CourseApplyService;
 import duyell.service.CourseService;
+import duyell.service.EvaluationService;
 import duyell.service.ScheduleService;
 import duyell.service.ScoreService;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ public class TeacherToolRegistrar implements InitializingBean {
     private final CourseApplyService courseApplyService;
     private final ScheduleService scheduleService;
     private final ScoreService scoreService;
+    private final EvaluationService evaluationService;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -72,14 +74,18 @@ public class TeacherToolRegistrar implements InitializingBean {
         ));
 
         registry.register("teacher", new ToolDefinition(
-                "enter_score", "录入成绩", "录入学生成绩（平时成绩和考试成绩，总成绩=平时×0.4+考试×0.6）",
+                "enter_score", "录入成绩",
+                "录入学生成绩（平时成绩和考试成绩，总成绩=平时×0.4+考试×0.6）。成绩为**百分制 0~100**；"
+                        + "不传分数时按 0 分参与计算。",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
                                 "courseId", Map.of("type", "integer", "description", "课程ID"),
                                 "studentId", Map.of("type", "string", "description", "学生学号"),
-                                "usualScore", Map.of("type", "number", "description", "平时成绩（可选，默认0）"),
-                                "examScore", Map.of("type", "number", "description", "考试成绩（可选，默认0）")
+                                "usualScore", Map.of("type", "number", "minimum", 0, "maximum", 100,
+                                        "description", "平时成绩（0~100，可选，默认0）"),
+                                "examScore", Map.of("type", "number", "minimum", 0, "maximum", 100,
+                                        "description", "考试成绩（0~100，可选，默认0）")
                         ),
                         "required", List.of("courseId", "studentId")
                 ),
@@ -121,14 +127,16 @@ public class TeacherToolRegistrar implements InitializingBean {
 
         registry.register("teacher", new ToolDefinition(
                 "update_score", "修改成绩",
-                "修改学生已有成绩（总成绩自动重算，提交后影响学业记录）。"
+                "修改学生已有成绩（总成绩自动重算，提交后影响学业记录）。成绩为**百分制 0~100**。"
                         + "只传需要改的那一项即可：usualScore / examScore 省略则保留库中原值，不会清零。",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
                                 "id", Map.of("type", "integer", "description", "成绩记录ID"),
-                                "usualScore", Map.of("type", "number", "description", "平时成绩；省略则沿用原值"),
-                                "examScore", Map.of("type", "number", "description", "考试成绩；省略则沿用原值")
+                                "usualScore", Map.of("type", "number", "minimum", 0, "maximum", 100,
+                                        "description", "平时成绩（0~100）；省略则沿用原值"),
+                                "examScore", Map.of("type", "number", "minimum", 0, "maximum", 100,
+                                        "description", "考试成绩（0~100）；省略则沿用原值")
                         ),
                         "required", List.of("id")
                 ),
@@ -163,11 +171,12 @@ public class TeacherToolRegistrar implements InitializingBean {
         ));
 
         registry.register("teacher", new ToolDefinition(
-                "get_my_evaluations", "学生评价", "查看学生对当前教师的教学评价",
+                "get_my_evaluations", "学生评价", "查看学生对当前教师的教学评价（**匿名**：不含提交学生）",
                 noParams(),
                 RiskLevel.READ_ONLY,
                 (args, userId, role) -> {
-                    List<TeacherEvaluation> evaluations = evaluationMapper.list(null, null, userId);
+                    // 必须走 listForTeacher：它会把"谁提交的"剥掉（匿名评教）
+                    List<TeacherEvaluation> evaluations = evaluationService.listForTeacher(userId);
                     return objectMapper.writeValueAsString(evaluations);
                 }
         ));

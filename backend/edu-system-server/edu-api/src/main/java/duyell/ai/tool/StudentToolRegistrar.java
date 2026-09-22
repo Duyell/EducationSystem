@@ -62,6 +62,7 @@ public class StudentToolRegistrar implements InitializingBean {
     private final SelectionRoundService selectionRoundService;
     private final ScheduleService scheduleService;
     private final AcademicWarningService academicWarningService;
+    private final EvaluationService evaluationService;
     private final ClassTimeMapper classTimeMapper;
 
     private static final String[] WEEKDAY_CN = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
@@ -203,7 +204,9 @@ public class StudentToolRegistrar implements InitializingBean {
                     eval.setTeacherId(teacherId);
                     eval.setScore(scoreVal);
                     eval.setContent(content);
-                    evaluationMapper.add(eval);
+                    // ⚠️ 必须走 service：它负责"只能评价本人已选课程"「评价对象由课程决定」「不能重复评价」
+                    // 三条服务端校验（原先这里直接 evaluationMapper.add，等于绕过了全部约束）
+                    evaluationService.add(eval);
                     return "{\"message\":\"评价提交成功\"}";
                 }
         ));
