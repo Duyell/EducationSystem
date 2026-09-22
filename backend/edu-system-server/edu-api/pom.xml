@@ -112,6 +112,19 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-autoconfigure-model-chat-memory</artifactId>
         </dependency>
+        <!--
+          M3（RAG 制度问答）：pgvector 向量库。
+          ⚠️ 这里刻意**只引入 starter 的自动配置能力**，但把它的自动装配关掉
+          （application.yml 里 `spring.ai.vectorstore.pgvector.enabled: false`），
+          改由 duyell.ai.rag.RagConfig 手工装配一个**独立数据源**的 PgVectorStore。
+          原因：本应用的主 DataSource 指向 MySQL，而 pgvector 的自动配置会拿主 DataSource
+          去建表/建扩展 —— 那会在启动期直接失败（MySQL 没有 vector 类型，实测报 1064）。
+          手工装配 + `ai.rag.enabled` 开关，做到"默认关闭、不影响既有 278 项测试、要演示时一行开启"。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -138,6 +151,25 @@
     </dependencies>
 
     <build>
+        <resources>
+            <!-- 常规资源 -->
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!--
+              M3（RAG）语料：把仓库里的制度文档**构建期**复制进 jar（classpath:policies/）。
+              刻意不手工往 resources 里再拷一份：那样就有两份语料，迟早漂移
+              （本项目的教训是"同一事实两处存储必然口径不一致"）。
+              语料仍是 docs/policies/*.md 这**一份**，jar 里的只是它的只读副本。
+            -->
+            <resource>
+                <directory>${project.basedir}/../../../docs/policies</directory>
+                <targetPath>policies</targetPath>
+                <includes>
+                    <include>*.md</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

@@ -1,4 +1,13 @@
 spring:
+  autoconfigure:
+    exclude:
+      # M3（RAG）：**必须显式排除** pgvector 的自动配置。
+      # 实测发现：它的 @ConditionalOnProperty 带了 matchIfMissing —— 也就是说**不写**
+      # `spring.ai.vectorstore.type` 它照样生效，会拿**主数据源（MySQL）**与主 JdbcTemplate
+      # 造一个名为 `vectorStore` 的 PgVectorStore（MySQL 没有 vector 类型，将来一检索就炸）。
+      # 默认状态下的 Bean 清单断言（RagDisabledByDefaultTest）就是抓住了它。
+      # 向量库一律由 duyell.ai.rag.RagConfig 手工装配：独立 PostgreSQL 数据源 + ai.rag.enabled 开关。
+      - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
   datasource:
     url: jdbc:mysql://localhost:3306/edujwxt?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf-8&allowPublicKeyRetrieval=true
     username: root
@@ -30,6 +39,11 @@ spring:
         options:
           model: ${AI_MODEL:qwen2.5:7b}
           temperature: ${AI_TEMPERATURE:0.7}
+      embedding:
+        # M3（RAG）：本机已有 bge-m3（1024 维）。只在 ai.rag.enabled=true 时才会真正调用，
+        # 但配置放这里，避免"开了开关却忘了配模型"这种半开状态。
+        options:
+          model: ${AI_EMBEDDING_MODEL:bge-m3}
 
 
 mybatis:
@@ -68,6 +82,25 @@ ai:
     # 注意：只影响"模型能看到多少上下文"，不影响落库的完整对话记录
     # （界面上往上的历史消息始终查得到，见 MybatisChatMemory 类注释）。
     max-messages: ${AI_MEMORY_MAX_MESSAGES:20}
+
+  # ---------- M3：RAG 制度问答（向量库 pgvector）----------
+  # ⚠️ 默认**关闭**：关闭时应用完全不碰 PostgreSQL（既有 278 项测试与启动流程不受影响）。
+  # 关闭的另一层含义：`spring.ai.vectorstore.type` 刻意**不设**——pgvector 的自动配置以它为条件，
+  # 一旦设成 pgvector，自动配置会拿**主数据源（MySQL）**去建 vector 表，启动即失败（MySQL 无 vector 类型）。
+  # 因此这里由 RagConfig 手工装配一个指向 PostgreSQL 的独立数据源。
+  rag:
+    enabled: ${AI_RAG_ENABLED:false}
+    jdbc-url: ${AI_RAG_JDBC_URL:jdbc:postgresql://localhost:5432/edurag}
+    username: ${AI_RAG_USERNAME:postgres}
+    password: ${AI_RAG_PASSWORD:123456}
+    # 向量表名与维度：bge-m3 是 1024 维（换嵌入模型必须同时改这里，否则建表维度对不上）
+    table-name: ${AI_RAG_TABLE:edu_policy_vectors}
+    dimensions: ${AI_RAG_DIMENSIONS:1024}
+    # 检索参数：topK 与相似度下限（过低会召回无关条款，过高会漏召回）
+    top-k: ${AI_RAG_TOP_K:5}
+    similarity-threshold: ${AI_RAG_SIMILARITY_THRESHOLD:0.35}
+    # 启动时自动重建索引（首次建库/换语料时用；生产应关掉，改由管理接口触发）
+    reindex-on-startup: ${AI_RAG_REINDEX_ON_STARTUP:true}
 
 academic:
   warning:
