@@ -582,7 +582,32 @@ clear(id) → 删除该会话消息
 - 会话的 `role` 与当前登录角色不一致时拒绝：两套提示词与工具白名单混进同一个上下文是越权风险。
 - 没有有效 `conversationId` 时**兜底新建**，不降级为无记忆对话（否则用户以为在接着上文说，实际上下文已丢）。
 
-### 8.4 记忆里放什么
+### 8.5 声明式工具（`@Tool` 迁移，2026-09-22 试点）
+
+M2 计划 1.3：把工具从"手写 Lambda 注册"改为"框架声明式方法"。**试点迁了 2 个**（一读一写）：
+
+```java
+@Tool(name = "select_course", description = "为当前登录学生本人选一门课……")
+@ToolMeta(displayName = "选课", riskLevel = RiskLevel.DANGEROUS)   // 框架没有这两项，项目侧补齐
+public String selectCourse(
+        @ToolParam(description = "课程ID", required = true) Integer courseId,
+        ToolContext context) { ... }
+```
+
+| 关注点 | 谁提供 |
+|---|---|
+| 工具声明、参数 JSON Schema、JSON→参数绑定、反射调用 | **框架**（`@Tool`/`@ToolParam`/`MethodToolCallback`/`JsonSchemaGenerator`） |
+| 角色白名单、参数二次校验、危险操作确认、审计、风险等级 | **本项目**（`ToolRegistry`/`AiChatService`）——与工具怎么写无关 |
+
+- `DeclarativeToolScanner` 把 `@Tool` 方法转成本项目的 `ToolDefinition`（Schema **直接取框架生成的那份**，避免两份漂移）；
+- `DeclarativeToolRegistrar` 是 `SmartInitializingSingleton`，在所有单例建好后**覆盖**同名手写工具
+  （若用 `InitializingBean`，Bean 顺序不确定，可能被手写实现反过来覆盖）；
+- 调用者身份 `userId` 只经 `ToolContext` 传入，**不进参数 Schema**（否则模型能改成别人的学号）；取不到就失败（fail closed）。
+- 两个坑：`MethodToolCallback.Builder.build()` 要求显式提供 `ToolDefinition`（不会从注解推导）；
+  **单个对象参数会被框架再套一层参数名**（`{"request":{"courseId":...}}`），与平铺契约不一致——
+  故试点使用平铺的 `@ToolParam` 形参。详见 `docs/开发记录.md`（二十一）。
+
+### 8.6 记忆里放什么
 
 - 只放 `user` / `assistant` 的**可见正文**；
 - 被输出护栏扣下的原始工具调用 JSON **不进记忆**——否则模型会把自己上一轮的畸形输出当成"我说过的话"再学一遍

@@ -40,13 +40,35 @@ public class ToolRegistry {
     private final Map<String, Set<String>> roleToolNames = new ConcurrentHashMap<>();
 
     public void register(String role, ToolDefinition tool) {
+        doRegister(role, tool, false);
+    }
+
+    /**
+     * 用新实现**有意覆盖**同一角色下的同名工具（声明式迁移用）。
+     *
+     * <p>与 {@link #register} 的唯一区别是日志语义：同一角色内重复注册通常是"两个注册器撞名"
+     * 的隐患，要 WARN；而这里覆盖是计划内的（声明式实现接管手写实现），
+     * 记 INFO 说明"谁接管了谁"，避免把一次正常迁移长期伪装成告警——告警一旦常见就没人看了。
+     */
+    public void registerOverride(String role, ToolDefinition tool) {
+        doRegister(role, tool, true);
+    }
+
+    private void doRegister(String role, ToolDefinition tool, boolean override) {
         Map<String, ToolDefinition> tools = roleTools.computeIfAbsent(role, k -> new ConcurrentHashMap<>());
-        // 同一角色内同名重复注册仍是静默覆盖（症状是"某个工具的描述莫名其妙变了"），必须留痕
         ToolDefinition previous = tools.put(tool.name(), tool);
         if (previous != null) {
-            log.warn("角色 [{}] 的工具 [{}] 被重复注册，后者覆盖前者（展示名: {} -> {}）。"
-                            + "请确认不是两个注册器起了同一个名字。",
-                    role, tool.name(), previous.displayName(), tool.displayName());
+            if (override) {
+                log.info("角色 [{}] 的工具 [{}] 已由新实现接管：{} -> {}（旧实现仍在代码里，作回归对照）",
+                        role, tool.name(), previous.displayName(), tool.displayName());
+            } else {
+                log.warn("角色 [{}] 的工具 [{}] 被重复注册，后者覆盖前者（展示名: {} -> {}）。"
+                                + "请确认不是两个注册器起了同一个名字。",
+                        role, tool.name(), previous.displayName(), tool.displayName());
+            }
+        } else if (override) {
+            log.warn("工具 [{}]（角色 {}）没有可覆盖的旧实现，已直接注册——"
+                    + "说明声明式副本与手写副本的命名或角色对不上，请核对", tool.name(), role);
         } else {
             warnIfNameUsedByOtherRole(role, tool);
         }
