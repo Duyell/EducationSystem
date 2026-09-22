@@ -46,19 +46,12 @@ public class PolicyDeclarativeTools implements DeclarativeToolGroup {
 
     private static final String[] ALL_ROLES = {"student", "teacher", "admin"};
 
-    private final VectorStore policyVectorStore;
+    private final PolicySearchService policySearchService;
     private final ObjectMapper objectMapper;
-    private final int defaultTopK;
-    private final double similarityThreshold;
 
-    public PolicyDeclarativeTools(@Qualifier("policyVectorStore") VectorStore policyVectorStore,
-                                  ObjectMapper objectMapper,
-                                  @Value("${ai.rag.top-k:5}") int defaultTopK,
-                                  @Value("${ai.rag.similarity-threshold:0.35}") double similarityThreshold) {
-        this.policyVectorStore = policyVectorStore;
+    public PolicyDeclarativeTools(PolicySearchService policySearchService, ObjectMapper objectMapper) {
+        this.policySearchService = policySearchService;
         this.objectMapper = objectMapper;
-        this.defaultTopK = defaultTopK;
-        this.similarityThreshold = similarityThreshold;
     }
 
     @Override
@@ -96,24 +89,15 @@ public class PolicyDeclarativeTools implements DeclarativeToolGroup {
                     required = false)
             Integer topK,
             ToolContext context) throws Exception {
-        // 角色只用于审计与排查（角色白名单已由 ToolRegistry 把关），这里取出来打日志便于回溯
+        // 角色只用于审计与排查（角色白名单已由 ToolRegistry 把关）
         String role = DeclarativeToolContext.currentRole(context);
 
-        int k = topK == null ? defaultTopK : Math.max(1, Math.min(10, topK));
-        SearchRequest.Builder builder = SearchRequest.builder().query(query).topK(k);
-        // 相似度下限：过低会把无关条款一起喂给模型（"检索到了"反而更容易答偏）
-        if (similarityThreshold > 0) {
-            builder.similarityThreshold(similarityThreshold);
-        }
-        if (docId != null && !docId.isBlank()) {
-            builder.filterExpression("docId == '" + docId.trim() + "'");
-        }
+        // 检索实现只有一处（PolicySearchService）：工具与排查/评测接口共用同一条链路，
+        // 否则评测测到的就不是线上那条链路了
+        List<PolicySearchService.PolicyHit> hits = policySearchService.search(query, docId, topK);
+        log.info("制度检索: role={}, query={}, docId={}, 命中={}", role, query, docId, hits.size());
 
-        List<Document> hits = policyVectorStore.similaritySearch(builder.build());
-        log.info("制度检索: role={}, query={}, docId={}, 命中={}",
-                role, query, docId, hits == null ? 0 : hits.size());
-
-        if (hits == null || hits.isEmpty()) {
+        if (hits.isEmpty()) {
             // 明确的结构化空结果：让模型能区分"没查到"与"工具失败"
             return objectMapper.writeValueAsString(Map.of(
                     "found", false,
@@ -121,16 +105,17 @@ public class PolicyDeclarativeTools implements DeclarativeToolGroup {
         }
 
         List<Map<String, Object>> results = new ArrayList<>();
-        for (Document hit : hits) {
+        for (PolicySearchService.PolicyHit hit : hits) {
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("docId", hit.getMetadata().get("docId"));
-            item.put("docTitle", hit.getMetadata().get("docTitle"));
-            item.put("section", hit.getMetadata().get("section"));
-            item.put("text", hit.getText());
+            item.put("docId", hit.docId());
+            item.put("docTitle", hit.docTitle());
+            item.put("section", hit.section());
+            item.put("text", hit.text());
             // 引用回填：提示词要求模型在回答里带上这两项（文档名 + 章节）
-            item.put("citation", hit.getMetadata().get("docTitle") + " " + hit.getMetadata().get("section"));
+            item.put("citation", hit.citation());
             results.add(item);
         }
         return objectMapper.writeValueAsString(Map.of("found", true, "count", results.size(), "results", results));
     }
 }
+

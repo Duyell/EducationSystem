@@ -78,6 +78,12 @@ public class LoginInterceptor implements HandlerInterceptor {
             // 学生看/确认**本人**预警（学号取自 token）；教师没有该功能。
             new AuthRule("/academic-warning/**", null, ADMIN, STUDENT),
 
+            // ---------- M3：制度知识库运维 ----------
+            // 重建索引会调嵌入模型（慢、有成本），只允许管理员；
+            // ⚠️ 必须排在其它 /ai/** 规则之前（本类顺序敏感）。
+            // 检索接口 /ai/rag/search 刻意**不**限制角色：三个角色都能查制度（与 search_policy 工具一致）。
+            new AuthRule("/ai/rag/reindex", Set.of("POST"), ADMIN),
+
             // ---------- P2：排课 / 教室 / 开课申请 ----------
             // ⚠️ 同样顺序敏感：越具体的路径必须排在 /xxx/** 之前，
             //    否则教师会被后面的 ADMIN 规则拒掉（或反过来越权放行）。

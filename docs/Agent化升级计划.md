@@ -56,7 +56,7 @@
 >
 > - **主线位置**：**M2 进行中**。1.2（接入 Spring AI）✅、**1.5 多轮记忆 ✅、1.6 会话 API ✅、1.7 前端会话侧栏 ✅**、
 >   **1.3 工具声明式迁移 ✅ 全部 33 个完成**、**1.4 Agent 循环 🟡 编排抽离完成（方案 B）**。
->   **Agent 能力已初步完整**；**M3（RAG，pgvector）**：向量库接线 ✅、语料切分与索引 ✅、`search_policy` 工具（含引用回填）✅（见开发记录 (二十四)(二十五)）；**剩 RAG 评测（命中率/MRR/忠实度）与前端来源展示**；另有增强项 1.1（拆 `edu-agent` 模块）、1.9（断线重连）、管理端成绩变更日志页面。
+>   **Agent 能力已初步完整**；**M3（RAG，pgvector）**：向量库接线 ✅、语料切分与索引 ✅、`search_policy` 工具（含引用回填）✅、**RAG 评测 ✅（Hit@5 100% / MRR 0.944）**（见开发记录 (二十四)(二十五)(二十六)）；**剩前端来源展示 + 制度问题"路由级强制检索"**（实测 7B 会不调工具就作答并编造文件名）；另有增强项 1.1（拆 `edu-agent` 模块）、1.9（断线重连）、管理端成绩变更日志页面。
 > - **代码状态**：会话/消息落 MySQL（`ai_conversation` + `ai_message`，迁移已执行）；
 >   `POST /ai/chat` 支持可选 `conversationId`（无 id 时服务端兜底新建，SSE 回传 `conversation` 事件）；
 >   AI 页已按 `vue-best-practices` 拆分（`index.vue` **752 → 324 行** + 3 个展示组件 + 2 个 composable），
@@ -99,7 +99,7 @@
 > - **动手前检查（本仓库踩过的，逐条照做）**：
 >   1. 先起 Redis + 后端；**用受管后台任务起服务**（`Start-Process` 起的会随命令结束被杀）；
 >      `Get-NetTCPConnection` 在本机沙箱里查不到监听端口 → 用 **`netstat -ano | findstr LISTENING`**；
->   2. `mvn -o -B test -pl edu-api -am` 应 **288 项**全绿（5 项为外部依赖用例，默认跳过）；RAG 真机用例：`-Dtest=RagConfigTest,PolicySearchLiveTest "-Dai.rag.live=true"`（需 pgvector 容器 + Ollama bge-m3）；
+>   2. `mvn -o -B test -pl edu-api -am` 应 **288 项**全绿（5 项为外部依赖用例，默认跳过）；RAG 真机用例：`-Dtest=RagConfigTest,PolicySearchLiveTest "-Dai.rag.live=true"`（需 pgvector 容器 + Ollama bge-m3）；RAG 评测：`node .dsh/eval-rag.cjs`（后端需 `AI_RAG_ENABLED=true`）；
 >   3. **改了接口/工具/Mapper 就要先 `mvn -o -B package -DskipTests` 再起后端**（只跑 test 不重打包 =
 >      拿旧 jar 测）→ 再 `node .dsh/verify-m2-conversations.cjs --no-llm`（会话链路，快）与
 >      `node .dsh/eval-p5-tools.cjs --inventory-only`（39 项）；
@@ -113,7 +113,7 @@
 >   6. **`.ps1` 改完必须数非 ASCII 字节**（必须为 0）；
 >      多行/带引号的 `git commit -m` 会被 PowerShell 拆坏 → 用 `git commit -F <文件>`；
 >   7. 跑评测核对审计表前先 `.\.dsh\verify-p5-audit.ps1 -Mark`；审计水位线已推进到 **716**。
-> - **本次工作记录**：`docs/开发记录.md` 第 **(二十五)**（M3 · 语料切分/索引 + search_policy 工具）、**(二十四)**（M3 起步 · pgvector 接入）、**(二十三)**（33 工具全量声明式迁移 · Agent 能力初步完整）、**(二十二)**（AgentRuntime + 事件契约）、**(二十一)**（工具声明式迁移）、**(二十)**（前端会话侧栏 +
+> - **本次工作记录**：`docs/开发记录.md` 第 **(二十六)**（M3 · RAG 评测 + 数据源事故修复）、**(二十五)**（M3 · 语料切分/索引 + search_policy 工具）、**(二十四)**（M3 起步 · pgvector 接入）、**(二十三)**（33 工具全量声明式迁移 · Agent 能力初步完整）、**(二十二)**（AgentRuntime + 事件契约）、**(二十一)**（工具声明式迁移）、**(二十)**（前端会话侧栏 +
 >   浏览器验证）、**(十九)**（M2 多轮会话 + 两个 bug）、**(十八)**（M2 起步）等；简历口径见 `docs/简历项目描述.md`。
 > - **待作者确认的事项**：`docs/policies/README.md` 第三节——**8 项已全部收口，当前无待决事项**。
 > - **一个已知的、不影响使用的设计取舍**：`drop_course`（退课）目前是普通写操作、**不弹确认卡片**，
@@ -726,6 +726,7 @@ views/ai/
 3. **建评测数据的骨架**：先把现有 21 个工具各写 2～3 条 golden 用例（哪怕先只有 40 条），后面每阶段都用它做回归。
 
 > 落地时按现有惯例：改动同步写入 `docs/开发记录.md` 顶部；新增数据库变更放 `docs/sql/` 并在 `edujwxt.sql` 同步。
+
 
 
 

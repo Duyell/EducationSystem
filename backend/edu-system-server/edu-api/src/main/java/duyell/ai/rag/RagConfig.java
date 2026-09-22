@@ -4,11 +4,17 @@ import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.jdbc.DataSourceBuilder;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Primary;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+
+import javax.sql.DataSource;
 
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -40,10 +46,42 @@ import com.zaxxer.hikari.HikariDataSource;
 public class RagConfig {
 
     /**
+     * 业务数据源（MySQL）——**只在 RAG 开启时**才由本类显式提供。
+     *
+     * <p>⚠️ 这是接第二个数据源最容易踩、且症状最吓人的坑：Spring Boot 的
+     * {@code DataSourceAutoConfiguration} 带 {@code @ConditionalOnMissingBean(DataSource.class)}，
+     * 只要上下文里已经有一个 `DataSource` Bean（本类的 RAG 数据源就是），
+     * **自动配置的 MySQL 数据源就不再创建**，于是 MyBatis 会连到 PostgreSQL 上——
+     * 实测症状是**连登录都失败**：`select * from sys_user` 报 `relation "sys_user" does not exist`。
+     *
+     * <p>因此这里显式把 MySQL 数据源补回来并标 {@code @Primary}：
+     * <ul>
+     *   <li>MyBatis 注入的是 {@code @Primary} 的那个 → 业务查询仍然走 MySQL；</li>
+     *   <li>RAG 数据源不加 {@code @Primary} → 只有显式 {@code @Qualifier("ragDataSource")} 才会用到它；</li>
+     *   <li>本 Bean 只在 {@code ai.rag.enabled=true} 时存在 → **默认关闭时启动路径与以前完全一致**，
+     *       不会因为"加了个 RAG"而改变既有数据源的创建方式。</li>
+     * </ul>
+     */
+    @Bean(name = "businessDataSourceProperties")
+    @Primary
+    @ConfigurationProperties("spring.datasource")
+    public DataSourceProperties businessDataSourceProperties() {
+        return new DataSourceProperties();
+    }
+
+    @Bean(name = "dataSource")
+    @Primary
+    public DataSource businessDataSource(@Qualifier("businessDataSourceProperties") DataSourceProperties properties) {
+        // ⚠️ 必须经 DataSourceProperties 构建：直接把 `spring.datasource` 绑到 HikariDataSource 上
+        // **不会**把 `url` 映射成 Hikari 的 `jdbcUrl`（属性名不同），
+        // 症状是启动一切正常、**第一次查询**才报 `jdbcUrl is required with driverClassName`。
+        return properties.initializeDataSourceBuilder().build();
+    }
+
+    /**
      * 向量库专用数据源（PostgreSQL）。
      *
-     * <p>刻意**不**把它标成 {@code @Primary}、也不放进 Spring 的 {@code DataSource} 自动装配路径：
-     * 主库仍是 MySQL，MyBatis 与业务事务必须继续走原来的数据源。
+     * <p>刻意**不**把它标成 {@code @Primary}：主库仍是 MySQL，MyBatis 与业务事务必须继续走原来的数据源。
      */
     @Bean(name = "ragDataSource", destroyMethod = "close")
     public HikariDataSource ragDataSource(
@@ -92,3 +130,6 @@ public class RagConfig {
                 .build();
     }
 }
+
+
+

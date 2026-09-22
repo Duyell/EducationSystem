@@ -2,6 +2,7 @@ package duyell.ai.rag;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import duyell.mapper.SysUserMapper;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -44,9 +45,28 @@ class RagConfigTest {
     @Qualifier("policyVectorStore")
     private VectorStore policyVectorStore;
 
+    @Autowired
+    private SysUserMapper sysUserMapper;
+
+    /**
+     * **第二个数据源的经典事故**：RAG 一开启，业务查询也必须继续走 MySQL。
+     *
+     * <p>实测踩到过：Spring Boot 的 {@code DataSourceAutoConfiguration} 带
+     * {@code @ConditionalOnMissingBean(DataSource.class)}，RAG 数据源先注册会让**自动配置的
+     * MySQL 数据源不再创建**，于是 MyBatis 连到 PostgreSQL 上——症状是**连登录都失败**
+     * （`select * from sys_user` 报 `relation "sys_user" does not exist`）。
+     * 修法见 {@code RagConfig#businessDataSource()}（显式提供并标 @Primary）。
+     * 这条断言就是那次事故的回归网：只要有人再动数据源装配，这里立刻变红。
+     */
     @Test
-    void vectorStoreWritesAndRetrievesThroughPgvector() {
-        assertNotNull(policyVectorStore, "ai.rag.enabled=true 时应装配 policyVectorStore");
+    void businessQueriesStillGoToMysqlWhileRagIsEnabled() {
+        assertNotNull(sysUserMapper, "MyBatis Mapper 应可用");
+        assertNotNull(sysUserMapper.selectByUsername("2023001"),
+                "RAG 开启时业务查询必须仍走 MySQL（否则登录等全部功能都会坏）");
+    }
+
+    @Test
+    void vectorStoreWritesAndRetrievesThroughPgvector() {        assertNotNull(policyVectorStore, "ai.rag.enabled=true 时应装配 policyVectorStore");
 
         String id = "test-policy-chunk-1";
         // 语料取自制度文档的真实条款（成绩与绩点换算），避免用无意义文本测出"假通过"
@@ -74,3 +94,4 @@ class RagConfigTest {
         }
     }
 }
+
