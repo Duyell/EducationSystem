@@ -38,6 +38,8 @@ __screenshots__/
 .dsh/p5-eval-run.log
 # 提交信息临时文件（用 git commit -F 时生成，提交完即删；不要入库）
 .dsh/commit-msg.txt
+.dsh/commit-message-*.txt
+.dsh/tmp-commit.txt
 
 # 系统文件
 .DS_Store
