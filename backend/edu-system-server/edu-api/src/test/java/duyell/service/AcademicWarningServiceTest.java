@@ -4,6 +4,7 @@ import com.duyell.Course;
 import com.duyell.Score;
 import duyell.mapper.CourseMapper;
 import duyell.mapper.ScoreMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -47,6 +48,25 @@ class AcademicWarningServiceTest {
     private static final int COURSE_CS101 = 1;   // 4.0 学分
     private static final int COURSE_CS102 = 2;   // 3.0 学分（2024002 已通过，用于"已通过不计入"）
     private static final int COURSE_CS107 = 10;  // 4.0 学分
+    private static final int COURSE_CS104 = 4;   // 3.5 学分（"变严重"用例里再挂一门）
+
+    /**
+     * 每个用例先把本测试要用的几门课清干净。
+     *
+     * <p>为什么要这么做：浏览器层脚本（`.dsh/verify-warning-ui.cjs`）会用**同一个学生**造不及格成绩，
+     * 一旦它中途被杀（本机真的发生过：DSH 宿主崩溃会带走后台任务），夹具行就残留在库里，
+     * 本测试再插入同一 (课程, 学生) 就会撞唯一键 `uk_score_course_student` 而红——
+     * 报错长得像业务缺陷，实际只是夹具不干净（本仓库"种子数据/夹具"类坑的又一实例）。
+     *
+     * <p>清理发生在测试事务内、测试结束回滚，因此**不会破坏真实数据**，
+     * 同时也让本类不再依赖"库里恰好没有这些行"这个外部假设。
+     */
+    @BeforeEach
+    void clearFixture() {
+        for (int courseId : new int[]{COURSE_CS101, COURSE_CS107, COURSE_CS104}) {
+            scoreMapper.delete(courseId, Integer.valueOf(STUDENT));
+        }
+    }
 
     private void addScore(int courseId, String usual, String exam) {
         Score s = new Score();

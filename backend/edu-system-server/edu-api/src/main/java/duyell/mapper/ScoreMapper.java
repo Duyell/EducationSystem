@@ -27,10 +27,16 @@ public interface ScoreMapper {
     void delete(Integer courseId, Integer studentId);
 
     /**
-     * 批量删除成绩
-     * @param courseIds 课程id的集合
+     * 批量删除成绩。
+     *
+     * <p>⚠️ 参数名必须叫 {@code ids}：XML 里写的是 {@code <foreach collection="ids">}，
+     * MyBatis 按参数名匹配集合。本方法原先命名为 {@code courseIds}，与 XML 对不上，
+     * 于是**成绩删除功能一直是 500**（`系统繁忙`）——由浏览器层验证暴露。
+     * 这里同时用 {@link Param} 显式声明，避免依赖编译期 {@code -parameters}。
+     *
+     * @param ids 成绩记录 id 集合
      */
-    void deleteByIds(List<Integer> courseIds);
+    void deleteByIds(@Param("ids") List<Integer> ids);
 
     /**
      * 更新成绩

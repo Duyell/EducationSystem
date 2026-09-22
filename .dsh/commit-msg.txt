@@ -1,0 +1,35 @@
+fix(score): 成绩删除一直是 500（ScoreMapper.deleteByIds 参数名与 XML 不匹配）
+
+原因：ScoreMapper.xml 写 <foreach collection="ids">，而接口参数名是 courseIds。
+MyBatis 按参数名匹配集合（本项目依赖编译期 -parameters，其余 7 个 mapper 的参数恰好都叫 ids），
+于是运行时抛错、接口回 {"code":500,"msg":"系统繁忙"}。
+影响：管理员/教师界面的"删除成绩"一直点不动，此前无任何测试覆盖（ScoreServiceCrudTest 为第一处）。
+修法：参数改名 ids + 显式 @Param("ids")。
+
+新增 .dsh/verify-warning-ui.cjs（27 项浏览器断言）
+- 未触发不弹 / 教师不弹 / 造 8.0 学分不及格 → 学生登录必弹且文案可解释 /
+  点"我知道了"后 shouldNotify=false / 再次登录不再弹 / 无未捕获异常与 console error / 自清理并断言删除成功
+- 自带夹具重置脚本 .dsh/reset-academic-warning.ps1（"只弹一次"天生是一次性断言，必须先重置）
+- 脚本自身两个坑已修并注释：同一账号再登录让旧 token 失效；教师查成绩必须带 courseId（反越权校验）
+
+夹具卫生
+- AcademicWarningServiceTest 增加 @BeforeEach 清理（中断的脚本残留夹具会撞唯一键 uk_score_course_student，
+  报错长得像业务缺陷）；清理在事务内、结束回滚，不破坏真实数据
+
+JW-06 审计修订（v1.1，作者三问）
+- 节次结构：上午 5 节（1~5）+ 下午 5 节（6~10），下午与上午同构（原表把 6~10 写成"按需排课"不准确）
+- 排课周期：明确按学期排、每学期排一次；解释为何不按年（上下学期的教师/周次/节次/教室都可能不同，
+  且选课与考试本就按学期组织）；同一门课下学期再开是另一条开课记录（class_time 上没有 term 字段）
+- 新增 2A 节：按教学班（而非行政班）排课，年级/专业/学院只用于培养方案定位与选课轮次范围，
+  不参与排课；冲突的学生维度逐人判定；人多就开多个教学班；并如实标出差异——
+  系统没有"按行政班整班上课/批量选课"的能力（列为待作者决定项 7）
+
+文档
+- policies/README：审计进度（JW-06 已审）、待决定项更新为 8 处
+- docs/开发记录.md 新增（十四）
+
+验证
+- mvn -o -B test -pl edu-api -am：164 项全绿（+2）
+- .dsh/verify-warning-ui.cjs：PASS=27 FAIL=0（真实 Chromium）
+- .dsh/verify-warning.ps1：28 项全绿；eval-p5-tools --inventory-only：39 项全绿
+- 夹具已重置（演示学生的 score / academic_warning 行数均为 0）
