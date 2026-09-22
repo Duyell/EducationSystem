@@ -198,4 +198,42 @@ class ToolCallTextGuardTest {
         assertTrue(visible.indexOf("tool_call") < 0, "落单标签不该出现：" + visible);
         assertTrue(visible.contains("结果如下"), "正文必须保留：" + visible);
     }
+
+    /**
+     * 逐字符流式下的落单 {@code </tool_call>} 也不能泄漏。
+     *
+     * <p>上面那条用例把整段文本**一次性**喂进去，标签在缓冲里是完整的，所以
+     * {@code stripStrayTags} 能删掉它；真实流式是**一个片段一个片段**来的——
+     * 护栏曾经只把"半个**开**标签"扣住，于是 {@code </}、{@code t}、{@code o}……
+     * 被逐段当成普通文本发出去，再也删不掉。
+     *
+     * <p>抓到这个问题的不是这里的单测，而是"落库的助手正文里不得出现工具调用残渣"这句断言
+     * （见 {@code OutputGuardrailIntegrationTest}）：它把"发给用户"和"写进记忆"两份文本一起看了。
+     */
+    @Test
+    void charByCharStrayClosingTagIsNotLeaked() {
+        ToolCallTextGuard guard = new ToolCallTextGuard(mapper);
+        String raw = "好的\n{\"name\": \"get_my_gpa\", \"arguments\": {}}\n</tool_call>你的平均学分绩点是 3.8834。";
+
+        StringBuilder visible = new StringBuilder();
+        for (String chunk : chars(raw)) {
+            visible.append(guard.feed(chunk));
+        }
+        ToolCallTextGuard.Result result = guard.finish();
+
+        assertEquals(1, result.calls().size(), "应恢复出 1 个调用");
+        assertTrue(visible.toString().indexOf("tool_call") < 0,
+                "逐字符流式下的落单闭合标签也不能泄漏：" + visible);
+        assertTrue(visible.toString().indexOf("\"arguments\"") < 0,
+                "原始 JSON 更不能泄漏：" + visible);
+        assertTrue(visible.toString().contains("3.8834"), "标签之后的正文必须保留：" + visible);
+
+        // 写回模型历史 / 落库记忆用的是 cleanText，同样不能带协议残渣，
+        // 否则模型会把自己上一轮的畸形输出当成"我说过的话"再学一遍。
+        assertTrue(result.cleanText().indexOf("tool_call") < 0,
+                "cleanText 不该含标签：" + result.cleanText());
+        assertTrue(result.cleanText().indexOf("\"arguments\"") < 0,
+                "cleanText 不该含原始 JSON：" + result.cleanText());
+        assertTrue(result.cleanText().contains("3.8834"), "cleanText 要保留真正的回答：" + result.cleanText());
+    }
 }

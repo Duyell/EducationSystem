@@ -156,9 +156,15 @@ public record ToolDefinition(
 | 方法 | 功能 |
 |------|------|
 | `register(role, tool)` | 注册工具并关联角色 |
-| `getToolsByRole(role)` | 按角色获取工具列表（学生 8 个、教师 5 个、管理员 8 个） |
-| `getTool(name)` | 按名称获取单个工具 |
+| `getToolsByRole(role)` | 按角色获取工具列表（学生 17 个、教师 7 个、管理员 9 个） |
+| `getTool(role, name)` | 按**角色 + 名称**获取单个工具 |
 | `toToolsPayload(toolDefs)` | 把工具定义转换成 OpenAI API 要求的 JSON 格式 |
+
+> ⚠️ **定义按角色隔离，不能只按名索引**（2026-09-22 修）：学生与教师**各有一个** `get_my_courses`
+> （学生＝我选的课、教师＝我教的课）。早期实现只有一张全局 Map，后注册的角色会覆盖前者：
+> 学生白名单校验通过、却执行了教师那份实现（拿学号当工号查课 → 返回空列表），
+> 模型拿到的描述也是教师版的。详见 `docs/开发记录.md`（十九）Bug ① 与
+> `ToolRegistryTest#sameToolNameIsIsolatedPerRole`。
 
 `toToolsPayload` 生成的 JSON 格式：
 ```json
@@ -523,3 +529,63 @@ registry.register("teacher", new ToolDefinition(
 ```
 
 仅此而已——不需要改 `ToolRegistry`、`ToolDefinition`、`AiChatService` 等任何其他文件。
+
+---
+
+## 八、M2：多轮会话与记忆（2026-09-22）
+
+> 本节是 M2 新增部分。**工具数量、文件清单以本文档为准的章节以「四、逐层详解」为准的部分已过时**
+> （M1 时为 21 个工具/11 个文件，P1–P5 之后为 33 个工具），最新口径见 `docs/开发记录.md` 与 `docs/Agent化升级计划.md`。
+
+### 8.1 数据模型
+
+| 表 | 作用 | 关键点 |
+|---|---|---|
+| `ai_conversation` | 会话（谁的、什么角色、标题、消息数） | id 是 **UUID 字符串**（要暴露给前端，自增整数会被猜） |
+| `ai_message` | 对话消息（`user` / `assistant` 正文） | **只追加的完整记录**，界面历史与审计都读它 |
+
+工具调用与工具结果的原始报文**不在**这两张表里，仍在 `ai_tool_audit`（有参数、结果、耗时、确认令牌）——
+同一份报文两处存储必然口径不一致。
+
+### 8.2 窗口：为什么不用 `MessageWindowChatMemory`
+
+框架的 `MessageWindowChatMemory.add()` 会 `findByConversationId` → 合并 → 裁剪 → **`saveAll(整个窗口)`**，
+即 `ChatMemoryRepository.saveAll` 的语义是"**替换**该会话的全部消息"。落到 MySQL 上：
+
+- 照语义替换 → 表里只剩最近 20 条，**用户往上翻就看不到自己的历史了**；
+- 当成追加 → 每轮把整个窗口再写一遍，**消息成倍膨胀**。
+
+所以本项目自己实现 `ChatMemory`（`MybatisChatMemory`）：
+
+```java
+get(id)   → messageMapper.listRecent(id, maxMessages)  // 一条 SQL 的 limit，倒序取出再反转
+add(id, m)→ 逐条 append 落库（只写新消息）
+clear(id) → 删除该会话消息
+```
+
+`ai.memory.max-messages`（默认 20 条 ≈ 10 轮）只影响**模型上下文**，不影响落库的完整历史。
+不变量由 `ConversationServiceTest#modelWindowKeepsMostRecentButDatabaseKeepsEverything` 钉住：
+11 轮（22 条）后模型窗口 20 条、库里 22 条。
+
+### 8.3 接口与安全
+
+| 接口 | 说明 |
+|---|---|
+| `POST /ai/conversations` | 新建会话。**role 只认 token**，请求体里的 role 被忽略（否则学生能拿到教师那套工具） |
+| `GET /ai/conversations` | 我的会话列表（最近更新在前） |
+| `GET /ai/conversations/{id}/messages` | 历史消息（`{conversation, messages}`） |
+| `DELETE /ai/conversations/{id}` | 删除会话及其消息 |
+| `POST /ai/chat` | 请求体增加可选 `conversationId`；SSE 首个事件回传 `{type:"conversation", conversationId}` |
+
+- **归属校验只有一个入口**：`ConversationService#requireOwned`，所有按 id 的读写都过它；
+  "不存在"与"不是你的"给**同一句提示**，避免探测会话 id 是否存在。
+- 会话的 `role` 与当前登录角色不一致时拒绝：两套提示词与工具白名单混进同一个上下文是越权风险。
+- 没有有效 `conversationId` 时**兜底新建**，不降级为无记忆对话（否则用户以为在接着上文说，实际上下文已丢）。
+
+### 8.4 记忆里放什么
+
+- 只放 `user` / `assistant` 的**可见正文**；
+- 被输出护栏扣下的原始工具调用 JSON **不进记忆**——否则模型会把自己上一轮的畸形输出当成"我说过的话"再学一遍
+  （由 `OutputGuardrailIntegrationTest` 的落库断言守住）；
+- 助手本轮没有任何正文时**不留空消息**（避免历史里全是空轮次）。
+

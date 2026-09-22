@@ -66,7 +66,7 @@ class AgentScoreEntryTest {
     }
 
     private Map<String, Object> run(String tool, Map<String, Object> args) throws Exception {
-        ToolDefinition def = registry.getTool(tool);
+        ToolDefinition def = registry.getTool("teacher", tool);
         assertNotNull(def, tool + " 未注册");
         ToolExecutionResult result = registry.executeForRole(def, "teacher", args, TEACHER);
         assertTrue(result.isSuccess(), "工具应以业务载荷返回，实际 " + result.status());

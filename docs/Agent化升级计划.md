@@ -47,23 +47,35 @@
 ## 接续开发指南（每次继续本项目先读这一节）
 
 > 本节为「下次开工」而写：环境怎么起、怎么验证、哪些事在等用户确认。
-> 更新到 2026-09-20：Agent 主线（M1 阶段 0）＋**教务业务扩展 P1/P2/P3/P4/P5 均已完成**，
-> 并已产出 **M3 的 RAG 语料（`docs/policies/` 10 份制度文件）**，全部推送 `origin/main`。
-> 下一步：**① 输出护栏（小）→ ② M2 框架化迁移（Spring AI + 多轮记忆）**。
+> 更新到 2026-09-22：Agent 主线 **M1 阶段 0 ✅** ＋**教务业务扩展 P1/P2/P3/P4/P5 ✅** ＋
+> **M2 的 1.2/1.5/1.6 ✅**（Spring AI 接入、多轮记忆、会话 API），并已产出
+> **M3 的 RAG 语料（`docs/policies/` 10 份制度文件）**，全部推送 `origin/main`。
+> 下一步：**① 前端会话侧栏（1.7）→ ② `@Tool` 声明式迁移对照（1.3/1.4）**。
 
-> ### ⏸ 暂停状态（2026-09-22 第六轮 = M2 起步，下次直接从这里开始）
+> ### ⏸ 暂停状态（2026-09-22 第七轮 = M2 多轮会话落地，下次直接从这里开始）
 >
-> - **主线位置**：**M2 框架化迁移已开工**。计划 1.2（接入 Spring AI）**已完成并实测**；
->   1.1（拆 `edu-agent` 模块）、1.5（多轮记忆）、1.6（会话 API）、1.7（前端会话侧栏）待做。
-> - **代码状态**：Spring AI 1.0.9 已进构建并跑通真实调用；旧手写 `OpenAiClient`/`AiChatService`
->   **保留**作回归对照（计划 1.4 要求）。工作区除 `frontend/.vscode/`（未跟踪）外干净。
-> - **M2 基线（迁移前对照，已存档）**：评测 `PASS=75 FAIL=0`、**`ROUTING 10/10`**；
->   后端测试 **188 项**全绿；工具面 student=17/teacher=7/admin=9。
+> - **主线位置**：**M2 进行中**。1.2（接入 Spring AI）✅、**1.5 多轮记忆 ✅、1.6 会话 API ✅**（本轮完成，
+>   含内存→MySQL 的记忆实现与归属校验）；**1.1（拆 `edu-agent` 模块）、1.7（前端会话侧栏）待做**。
+> - **代码状态**：会话/消息落 MySQL（`ai_conversation` + `ai_message`，迁移已执行）；
+>   `POST /ai/chat` 支持可选 `conversationId`（无 id 时服务端兜底新建，SSE 回传 `conversation` 事件）；
+>   旧手写 `OpenAiClient`/`AiChatService` 仍是主链路（计划 1.4：保留一个版本周期作对照）。
+> - **本轮修掉两个"测试全绿、真机在错"的 bug（务必知道，都是断言缺口造成的）**：
+>   1. **同名工具跨角色互相覆盖**：学生与教师都有 `get_my_courses`，定义却存在一张全局 Map 里，
+>      后注册者覆盖前者 → 学生白名单**通过**、执行的却是**教师实现**（拿学号当工号查课 → 空列表），
+>      模型看到的描述也是教师版。真机表现："学生问'我选了什么课'，助手答'你没选任何课'"。
+>      修法：定义改为 `Map<role, Map<name, ToolDefinition>>`，`getTool(role, name)` 必须带角色。
+>      **教训：'工具被选中' ≠ '工具做对了事'**——工具面测试只看"在不在/角色对不对"，
+>      评测只看 `ROUTING`，没有一处看过工具返回的数据。新增 `StudentCourseListToolTest` 补上这一层。
+>   2. **逐字符流式下漏出落单 `</tool_call>`**：上一轮只把"半个**开**标签"扣住，
+>      于是 `</`、`t`、`o`… 被逐段当普通文本发出去（整段喂入的用例测不出来）。
+>      是"**落库正文**不得含工具调用残渣"这条新断言抓到的。修法：`partialTagIndex` 同时匹配开/闭标签前缀。
+> - **M2 基线（迁移前对照，已存档）**：评测 `PASS=75 FAIL=0`、**`ROUTING 10/10`**（迁移前）；
 >   ⚠️ 7B 模型选路**本身有波动**（同套用例出现过 10/10 与 8/10），迁移后对照要**多次跑**再下结论。
-> - **本轮交付**：`spring-ai-bom:1.0.9` + ollama starter（`ChatModel=OllamaChatModel`、
->   `ChatMemory=MessageWindowChatMemory` 均自动配置）+ `AgentConfig` 的 `ChatClient` +
->   `SpringAiWiringTest`（默认只验 Bean，真实调用用 `-Dai.live=true`，已手工跑通"收到"）。
->   另**修**了输出护栏漏掉"落单 `</tool_call>` 标签"的洞（基线评测当场咬红）。详见开发记录 **(十八)**。
+> - **本轮交付**：`MybatisChatMemory`（只追加完整记录 + 取最近 N 条作窗口）、`ConversationService(+Impl)`、
+>   `AgentConversationController`（`/ai/conversations`）、`AiChatService` 的历史窗口与落库、
+>   `.dsh/verify-m2-conversations.cjs`（**PASS=31 FAIL=0**，跑完不留数据）。
+>   ⚠️ **刻意不用框架的 `MessageWindowChatMemory`**：它的 `saveAll` 语义是"替换整个会话的消息"，
+>   落到 MySQL 要么丢历史、要么消息翻倍（字节码核对过，详见开发记录 **(十九)** 与架构文档第八节）。
 > - **本轮两个环境坑（已解决，动手前先看）**：
 >   1. **离线构建认领不了本地 Spring AI 制品**：本机 m2 里这批制品来源 id 是 `aliyun-maven`（镜像），
 >      Maven `-o` 模式要求来源 id 在当前仓库列表里，否则报
@@ -72,22 +84,22 @@
 >   2. **Spring AI 的传递依赖本地不全**（spring-retry / spring-webflux / micrometer-core…），
 >      联网拉一次；本机沙箱不许写 `~/.m2` → **一次性提权**跑同一条构建命令即可，之后 `mvn -o` 正常。
 > - **下一步（按顺序，可直接开工）**：
->   1. `ChatMemory` 已就绪 → 用 MySQL 实现 `ChatMemoryRepository`（会话表 + 消息表）；
->   2. 会话管理 API（建/列/查/删 + 归属校验）+ `POST /ai/chat` 支持 `conversationId`；
->   3. 挑 1~2 个工具改 `@Tool` 声明式，与手写注册对照；
->   4. 前端会话侧栏（顺带按 `vue-best-practices` 拆 `views/ai/index.vue`）。
+>   1. **前端会话侧栏**（计划 1.7）：左侧会话列表 + 新建 + 删除、`?conversationId=` 回填历史、
+>      消费 SSE 的 `conversation` 事件；顺带按 `vue-best-practices` 拆 `views/ai/index.vue`（已 752 行）；
+>   2. 挑 1~2 个工具改 `@Tool` 声明式，与手写注册对照（计划 1.4 的对照仍继续）；
+>   3. 可选：拆分 `edu-agent` 模块（计划 1.1）；管理端"成绩变更日志"页面（接口已就绪）。
 > - **动手前检查（本仓库踩过的，逐条照做）**：
->   1. 先起 Redis + 后端；**用受管后台任务起 Redis**（`Start-Process` 起的会随命令结束被杀）；
->   2. `mvn -o -B test -pl edu-api -am` 应 **188 项**全绿；
+>   1. 先起 Redis + 后端；**用受管后台任务起服务**（`Start-Process` 起的会随命令结束被杀）；
+>      `Get-NetTCPConnection` 在本机沙箱里查不到监听端口 → 用 **`netstat -ano | findstr LISTENING`**；
+>   2. `mvn -o -B test -pl edu-api -am` 应 **207 项**全绿（188 + M2 新增 19）；
 >   3. **改了接口/工具/Mapper 就要先 `mvn -o -B package -DskipTests` 再起后端**（只跑 test 不重打包 =
->      拿旧 jar 测，症状是日志里满屏 `NoResourceFoundException`）→ 再
+>      拿旧 jar 测）→ 再 `node .dsh/verify-m2-conversations.cjs --no-llm`（会话链路，快）与
 >      `node .dsh/eval-p5-tools.cjs --inventory-only`（39 项）；
 >   4. **`.ps1` 改完必须数非 ASCII 字节**（必须为 0）；
 >      多行/带引号的 `git commit -m` 会被 PowerShell 拆坏 → 用 `git commit -F <文件>`；
->   5. 跑评测核对审计表前先 `.\.dsh\verify-p5-audit.ps1 -Mark`（水位线已置为 675）。
-> - **本次工作记录**：`docs/开发记录.md` 第 **(十八)**（M2 起步）、**(十七)**（成绩变更日志）、
->   **(十六)**（评教匿名/归属 + 成绩范围）、**(十五)**（输出护栏）、**(十四)**（成绩删除修复 + 浏览器验证）
->   等；简历口径见 `docs/简历项目描述.md`。
+>   5. 跑评测核对审计表前先 `.\.dsh\verify-p5-audit.ps1 -Mark`；审计水位线本轮后为 **716** 左右（以脚本输出为准）。
+> - **本次工作记录**：`docs/开发记录.md` 第 **(十九)**（M2 多轮会话 + 两个 bug）、**(十八)**（M2 起步）、
+>   **(十七)**（成绩变更日志）、**(十六)**（评教匿名/归属 + 成绩范围）等；简历口径见 `docs/简历项目描述.md`。
 > - **待作者确认的事项**：`docs/policies/README.md` 第三节——**8 项已全部收口，当前无待决事项**。
 > - **一个已知的、不影响使用的设计取舍**：`drop_course`（退课）目前是普通写操作、**不弹确认卡片**，
 >   而选课/录成绩/开课申请/审批都弹（已在 JW-02 5.5 如实写明）。若认为退课也该确认，一行就能改。
@@ -482,9 +494,9 @@ npm run build-only            # 沙箱下需提权：Vite 配置加载会 child_
 | 1.2 接入 Spring AI | `spring-ai-bom` + `spring-ai-starter-model-openai` 指向 DeepSeek；`ChatClient` Bean 统一构建；保留 `OpenAiClient` 一个版本周期作为回归对照，之后删除 | `AgentConfig` |
 | 1.3 工具改造 | 21 个工具由 Lambda 改为**声明式 `@Tool` 方法**（`description` 写清"何时用/何时不用"），按角色拆成工具类：`StudentTools/TeacherTools/AdminTools`；入参用 record/DTO 让框架自动生成 JSON Schema | `tool/*.java` |
 | 1.4 Agent 循环 | 用框架的 tool-calling 循环（或自写 `AgentRuntime` 只保留编排：迭代上限、超时、取消、事件回调）；`SseEmitter` 抽象为 `AgentEventPublisher`，事件类型枚举化 | `AgentRuntime`、`AgentEvent` |
-| 1.5 多轮记忆 | `ChatMemory` + Redis 持久化（`MessageWindowChatMemory(maxMessages=20)`，超出走**摘要压缩**）；`sessionId = userId + conversationId`；敏感上下文（如成绩明细）不进长期记忆 | `MemoryConfig`、`conversation`/`message` 表 |
-| 1.6 会话管理 API | `GET/POST/DELETE /ai/conversations`、`GET /ai/conversations/{id}/messages`；支持"新建会话/切换/重命名/删除" | `AgentChatController` |
-| 1.7 前端会话侧栏 | 左侧会话列表 + 新建 + 删除；`?conversationId=` 路由参数；历史消息回填 | `views/ai/` 拆分组件 |
+| 1.5 多轮记忆 | **✅ 已完成（2026-09-22）**：`ChatMemory` + **MySQL** 持久化（`ai_conversation`/`ai_message`）；窗口＝"取最近 N 条"（`ai.memory.max-messages`，默认 20）。⚠️ **未用**框架的 `MessageWindowChatMemory`：其 `saveAll` 是"替换整个会话"语义，落 MySQL 要么丢历史、要么消息翻倍（理由见开发记录 (十九)）；摘要压缩**暂不做**（7B 下性价比低，待上下文真正吃紧再加） | `MybatisChatMemory`、`ConversationService` |
+| 1.6 会话管理 API | **✅ 已完成（2026-09-22）**：`POST/GET /ai/conversations`、`GET /ai/conversations/{id}/messages`、`DELETE /ai/conversations/{id}`；`POST /ai/chat` 支持可选 `conversationId` + SSE 回传 `conversation` 事件；归属校验单一入口 `requireOwned`（改 id 只会得到"不存在或无权访问"）；role 只认 token。**重命名接口暂未做**（标题由首条消息自动生成，够用） | `AgentConversationController` |
+| 1.7 前端会话侧栏 | 左侧会话列表 + 新建 + 删除；`?conversationId=` 路由参数；历史消息回填（后端已就绪，见 1.6） | `views/ai/` 拆分组件 |
 | 1.8 结构化系统提示 | 提示词外置到 `src/main/resources/prompts/*.st`（可配、可测、可按版本 diff），`{角色} + {当前日期} + {可用工具摘要} + {行为规则}` 模板化 | `prompts/` |
 | 1.9 流式健壮性 | 断线重连（前端带 `lastEventId` 重试）、超时可配、`onError` 不再静默吞异常 | `AgentEventPublisher`、前端 |
 

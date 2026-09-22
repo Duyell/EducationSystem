@@ -32,4 +32,16 @@ public class AgentConfig {
     public ChatClient agentChatClient(ChatModel chatModel) {
         return ChatClient.builder(chatModel).build();
     }
+
+    /*
+     * 多轮记忆（M2 计划 1.5）的 ChatMemory **不在这里声明**：
+     * 实现在 {@code duyell.ai.memory.MybatisChatMemory}（@Component），
+     * 原因（框架自带的 MessageWindowChatMemory 与本项目的"完整对话记录"语义冲突）
+     * 写在该类的类注释里。
+     *
+     * 它仍然是 ChatMemory 类型，因此 Spring AI 自动配置里的
+     * {@code ChatMemoryAutoConfiguration#chatMemory}（@ConditionalOnMissingBean）会退让，
+     * 容器里只会有本项目这一个 ChatMemory。窗口大小由 {@code ai.memory.max-messages} 控制
+     * （默认 20 条 ≈ 10 轮）。
+     */
 }

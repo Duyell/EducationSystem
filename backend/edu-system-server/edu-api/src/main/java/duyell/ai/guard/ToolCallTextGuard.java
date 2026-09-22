@@ -269,13 +269,24 @@ public final class ToolCallTextGuard {
         return -1;
     }
 
-    /** 返回"可能是半个 {@code <tool_call>} 标签"的起始下标；没有则 -1 */
+    /**
+     * 返回"可能是半个协议标签"的起始下标；没有则 -1。
+     *
+     * <p>⚠️ 必须同时考虑 {@code <tool_call>} **和** {@code </tool_call>}
+     * （只有开标签一个字符差：{@code <} vs {@code </}）。
+     * 这里曾经只匹配开标签前缀，导致逐字符流式下的 {@code </tool_call>} 被**一个片段一个片段地**
+     * 当普通文本放出去：{@code </}、{@code t}、{@code o}……各自都不含完整标签，
+     * {@link #stripStrayTags} 自然无从删除，最后用户界面与会话记忆里就留下一串
+     * {@code </tool_call>}（2026-09-22 由"落库正文不得含工具调用残渣"的断言抓出来）。
+     * 整块喂入时看不出这个问题——所以单测必须有一条**逐字符**喂闭合标签的用例。
+     */
     private static int partialTagIndex(CharSequence s) {
-        int max = Math.min(TAG_OPEN.length() - 1, s.length());
+        int longest = Math.max(TAG_OPEN.length(), TAG_CLOSE.length());
+        int max = Math.min(longest - 1, s.length());
         for (int len = max; len >= 1; len--) {
             int from = s.length() - len;
             String tail = s.subSequence(from, s.length()).toString();
-            if (TAG_OPEN.startsWith(tail)) {
+            if (TAG_OPEN.startsWith(tail) || TAG_CLOSE.startsWith(tail)) {
                 return from;
             }
         }

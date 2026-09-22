@@ -1,6 +1,7 @@
 package duyell.ai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.duyell.AiConversation;
 import com.duyell.AiToolAudit;
 import duyell.ai.audit.AiAuditService;
 import duyell.ai.audit.AuditStatus;
@@ -15,10 +16,14 @@ import duyell.ai.guard.ToolCallTextGuard;
 import duyell.ai.tool.ToolDefinition;
 import duyell.ai.tool.ToolExecutionResult;
 import duyell.ai.tool.ToolRegistry;
+import duyell.service.ConversationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import utils.BusinessException;
 import utils.JwtUtil;
 
 import java.io.IOException;
@@ -41,6 +46,8 @@ public class AiChatService {
     private final ToolArgumentValidator toolArgumentValidator;
     private final AgentRateLimiter rateLimiter;
     private final ObjectMapper objectMapper;
+    private final ConversationService conversationService;
+    private final ChatMemory chatMemory;
 
     private static final long SSE_TIMEOUT = 5 * 60 * 1000L; // 5 minutes
 
@@ -147,6 +154,17 @@ public class AiChatService {
             """;
 
     public SseEmitter chat(String message, String token) {
+        return chat(message, token, null);
+    }
+
+    /**
+     * AI 对话（M2：带会话的多轮对话）。
+     *
+     * @param conversationId 会话 id；为空时由服务端新建一个并**通过 SSE 的
+     *                       {@code conversation} 事件**告知调用方（前端通常先建会话，
+     *                       这样它一出现就在左侧列表里；兜底新建保证"每轮对话都可追溯"）
+     */
+    public SseEmitter chat(String message, String token, String conversationId) {
         // Parse token
         String userId;
         String role;
@@ -191,7 +209,7 @@ public class AiChatService {
         // Background task to run the tool-calling loop
         CompletableFuture.runAsync(() -> {
             try {
-                processChat(message, userId, role, emitter, awaitingConfirmId);
+                processChat(message, userId, role, conversationId, emitter, awaitingConfirmId);
             } catch (Exception e) {
                 log.error("AI chat processing error", e);
                 try {
@@ -223,7 +241,7 @@ public class AiChatService {
         return emitter;
     }
 
-    private void processChat(String message, String userId, String role,
+    private void processChat(String message, String userId, String role, String requestedConversationId,
                              SseEmitter emitter, String[] awaitingConfirmId) throws Exception {
 
         // Select system prompt by role
@@ -233,10 +251,30 @@ public class AiChatService {
             default -> SYSTEM_PROMPT_STUDENT;
         };
 
+        // ① 先确定会话（归属校验 / 兜底新建）。失败时按 SSE 错误收尾，不进入模型调用：
+        //    绝不能"降级成无记忆对话"继续跑——那等于用一个错误会话 id 悄悄读别人的上下文。
+        AiConversation conversation = resolveConversation(requestedConversationId, userId, role, emitter);
+        if (conversation == null) {
+            return;     // 已回复错误并 complete
+        }
+        sendSse(emitter, "message", Map.of(
+                "type", "conversation", "conversationId", conversation.getId()));
+
         // Build initial messages
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.builder().role("system").content(systemPrompt).build());
+        // ② 历史窗口：**先读历史，再写入本轮用户消息**。反过来的话本轮消息会被读一次、
+        //    又被当成"用户输入"追加一次，模型会看到两遍同一句话。
+        messages.addAll(historyMessages(conversation.getId()));
         messages.add(ChatMessage.builder().role("user").content(message).build());
+
+        // 落库本轮用户消息（首条消息顺带生成会话标题）
+        conversationService.appendUserMessage(conversation.getId(), message);
+
+        // ③ 本轮模型输出的**可见正文**（供多轮记忆）。
+        //    只收集真正发给用户的文本：被输出护栏扣下的原始工具调用 JSON 不进记忆，
+        //    否则下一轮模型会把自己上次的畸形输出当成"我说过的话"再学一遍。
+        StringBuilder answerText = new StringBuilder();
 
         // Get tools for this role
         List<ToolDefinition> tools = toolRegistry.getToolsByRole(role);
@@ -269,6 +307,7 @@ public class AiChatService {
                         if (safe.isEmpty()) {
                             return;
                         }
+                        answerText.append(safe);
                         try {
                             emitter.send(SseEmitter.event()
                                     .name("message")
@@ -306,8 +345,10 @@ public class AiChatService {
                 if (recovered.calls().isEmpty()) {
                     // 正常结束：把护栏扣住的普通文本补发出去（不能吞掉回答）
                     if (!recovered.trailingText().isEmpty()) {
+                        answerText.append(recovered.trailingText());
                         sendSse(emitter, "message", Map.of("type", "token", "content", recovered.trailingText()));
                     }
+                    conversationService.appendAssistantMessage(conversation.getId(), answerText.toString());
                     sendSse(emitter, "done", Map.of("type", "done"));
                     emitter.complete();
                     return;
@@ -383,7 +424,10 @@ public class AiChatService {
                     continue;
                 }
 
-                ToolDefinition toolDef = toolRegistry.getTool(toolName);
+                // 定义必须按角色取：同名工具在不同角色下可能是**两份不同实现**
+                // （例如 get_my_courses 对学生是"我选的课"、对教师是"我教的课"），
+                // 按名全局查找会执行到另一个角色的实现（见 ToolRegistry 类注释）
+                ToolDefinition toolDef = toolRegistry.getTool(role, toolName);
                 Map<String, Object> parsedArgs = parseArguments(rawArgs);
 
                 // ①' 参数 Schema 校验：参数不合法就不该进入确认流程、更不该执行。
@@ -440,6 +484,9 @@ public class AiChatService {
                         auditService.record(userId, role, toolName, toolDef.riskLevel().name(),
                                 parsedArgs, null, AuditStatus.REJECTED_BY_USER,
                                 "用户取消或确认超时，工具未执行", outcome.confirmId(), null);
+                        // 已说出口的正文仍要入记忆：下一轮追问时模型才知道自己刚才说过什么。
+                        // 而"已取消"是系统文案、不是模型输出，不入记忆（否则会被模型当成自己的话复述）。
+                        conversationService.appendAssistantMessage(conversation.getId(), answerText.toString());
                         sendSse(emitter, "message", Map.of("type", "status",
                                 "content", "本次操作已取消，未对数据做任何修改"));
                         sendSse(emitter, "done", Map.of("type", "done"));
@@ -489,12 +536,85 @@ public class AiChatService {
         }
 
         // Max iterations reached
+        conversationService.appendAssistantMessage(conversation.getId(), answerText.toString());
         sendSse(emitter, "message", Map.of(
                 "type", "status",
                 "content", "⚠️ 已达到最大迭代次数，部分操作可能未完成"
         ));
         sendSse(emitter, "done", Map.of("type", "done"));
         emitter.complete();
+    }
+
+    /**
+     * 确定本轮使用的会话。
+     *
+     * <p>规则：
+     * <ul>
+     *   <li>带 {@code conversationId}：**必须属于当前用户**（{@code requireOwned}），否则报错收尾；</li>
+     *   <li>不带：新建一个——这样"每轮对话都可追溯"，而不是悄悄退化成无记忆对话；</li>
+     *   <li>会话的 role 与当前登录角色不一致时拒绝：同一个账号的角色发生变化（管理员改过权限、
+     *       或者前端传了别人的会话 id）时，两套系统提示词与工具白名单混进同一个上下文，
+     *       是明确的越权风险，宁可让用户新建会话。</li>
+     * </ul>
+     *
+     * @return 可用会话；失败时已向 SSE 发送错误并完成响应，返回 {@code null}
+     */
+    private AiConversation resolveConversation(String requestedConversationId, String userId, String role,
+                                               SseEmitter emitter) {
+        try {
+            if (requestedConversationId == null || requestedConversationId.isBlank()) {
+                return conversationService.create(userId, role, null);
+            }
+            AiConversation conversation = conversationService.requireOwned(requestedConversationId, userId);
+            if (conversation.getRole() != null && !conversation.getRole().equals(role)) {
+                log.warn("会话角色与当前角色不一致，已拒绝: conversation={}, 会话角色={}, 当前角色={}",
+                        requestedConversationId, conversation.getRole(), role);
+                throw new BusinessException("该会话属于其他角色，请新建会话");
+            }
+            return conversation;
+        } catch (BusinessException e) {
+            // 会话不可用时**不降级**为无记忆对话：那等于用一个错误 id 继续跑，
+            // 用户会以为自己在接着上文说，实际上下文已经丢了。
+            sendSse(emitter, "message", Map.of("type", "error", "content", e.getMessage()));
+            sendSse(emitter, "done", Map.of("type", "done"));
+            emitter.complete();
+            return null;
+        }
+    }
+
+    /**
+     * 历史消息 → 本项目 {@code ChatMessage} 列表（供 {@code OpenAiClient} 拼请求）。
+     *
+     * <p>窗口大小由 {@link ChatMemory} 的实现决定（见 {@code MybatisChatMemory}），
+     * 这里只负责转换，不再做第二次裁剪——裁剪规则只有一处实现。
+     *
+     * <p>只映射 user / assistant：工具报文在 {@code ai_tool_audit}，
+     * 也不会出现在记忆里（历史里出现孤立的 tool 消息会被模型服务直接拒绝）。
+     */
+    private List<ChatMessage> historyMessages(String conversationId) {
+        List<Message> history = chatMemory.get(conversationId);
+        if (history == null || history.isEmpty()) {
+            return List.of();
+        }
+        List<ChatMessage> converted = new ArrayList<>(history.size());
+        for (Message message : history) {
+            String historyRole = switch (message.getMessageType()) {
+                case USER -> "user";
+                case ASSISTANT -> "assistant";
+                default -> null;
+            };
+            if (historyRole == null) {
+                continue;
+            }
+            String text = message.getText();
+            if (text == null || text.isBlank()) {
+                continue;
+            }
+            converted.add(ChatMessage.builder().role(historyRole).content(text).build());
+        }
+        log.debug("会话历史: conversation={}, 窗口内 {} 条, 可用 {} 条",
+                conversationId, history.size(), converted.size());
+        return converted;
     }
 
     /**

@@ -63,6 +63,11 @@ ai:
     max-iterations: ${AI_MAX_ITERATIONS:5}
     # 单次对话内最大工具调用总次数
     max-tool-calls-per-chat: ${AI_MAX_TOOL_CALLS_PER_CHAT:20}
+  memory:
+    # 多轮对话进模型上下文的**消息条数**上限（一问一答算两条），默认 20 条 ≈ 10 轮。
+    # 注意：只影响"模型能看到多少上下文"，不影响落库的完整对话记录
+    # （界面上往上的历史消息始终查得到，见 MybatisChatMemory 类注释）。
+    max-messages: ${AI_MEMORY_MAX_MESSAGES:20}
 
 academic:
   warning:

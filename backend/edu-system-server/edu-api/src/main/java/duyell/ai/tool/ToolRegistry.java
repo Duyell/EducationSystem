@@ -13,23 +13,42 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * <p>安全要点：模型给出的工具名<b>不可信</b>。执行前必须校验
  * 「工具存在」且「该工具属于当前角色」，否则视为越权调用直接拒绝。
  * 旧实现用的是全局查找 {@code getTool(name)}，意味着学生角色理论上能触发教师工具。
+ *
+ * <p>⚠️ <b>定义必须按角色隔离，不能只按工具名索引</b>（2026-09-22 修）：
+ * 学生与教师各有一个叫 {@code get_my_courses} 的工具，但语义不同
+ * （学生的＝"我选的课"，教师的＝"我教的课"）。早期实现把定义放在**一个全局 Map** 里，
+ * 于是两个注册器互相覆盖——注册顺序决定谁能活下来。症状极具迷惑性：
+ * <ul>
+ *   <li>学生角色的白名单校验**通过**（名字确实在学生的名单里），</li>
+ *   <li>但执行的是**教师那份实现**，用学号当教师工号去查 → 返回空列表；</li>
+ *   <li>模型还会拿到教师版描述，等于从提示词层面就开始误导。</li>
+ * </ul>
+ * 这个问题在真机上表现为"学生问'我选了什么课'，助手答'你没有选任何课'"，
+ * 而所有既有测试都是绿的（工具面测试只看"工具在不在、角色对不对"，
+ * 评测脚本只看"模型选没选对工具"——**没有一处看过工具返回的数据**）。
+ * 现在同一工具名在不同角色下是**两份独立定义**，互不可见；
+ * 跨角色同名只记一条日志（这是合法用法，但值得在日志里留痕）。
  */
 @Component
 public class ToolRegistry {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ToolRegistry.class);
 
-    private final Map<String, ToolDefinition> allTools = new ConcurrentHashMap<>();
+    /** 角色 → 该角色的工具定义（按名索引）。定义**不跨角色共享** */
+    private final Map<String, Map<String, ToolDefinition>> roleTools = new ConcurrentHashMap<>();
+    /** 角色 → 工具名集合。用 Set 只为保留注册顺序（payload 顺序稳定，便于比对与排查） */
     private final Map<String, Set<String>> roleToolNames = new ConcurrentHashMap<>();
 
     public void register(String role, ToolDefinition tool) {
-        // 同名工具重复注册会静默覆盖（allTools 是按名的 Map），
-        // 两个注册器各自起名时很容易撞车，且症状是"某个工具的描述莫名其妙变了"——极难排查。
-        ToolDefinition previous = allTools.put(tool.name(), tool);
+        Map<String, ToolDefinition> tools = roleTools.computeIfAbsent(role, k -> new ConcurrentHashMap<>());
+        // 同一角色内同名重复注册仍是静默覆盖（症状是"某个工具的描述莫名其妙变了"），必须留痕
+        ToolDefinition previous = tools.put(tool.name(), tool);
         if (previous != null) {
-            log.warn("工具 [{}] 被重复注册，后者覆盖前者（展示名: {} -> {}）。"
+            log.warn("角色 [{}] 的工具 [{}] 被重复注册，后者覆盖前者（展示名: {} -> {}）。"
                             + "请确认不是两个注册器起了同一个名字。",
-                    tool.name(), previous.displayName(), tool.displayName());
+                    role, tool.name(), previous.displayName(), tool.displayName());
+        } else {
+            warnIfNameUsedByOtherRole(role, tool);
         }
         roleToolNames.computeIfAbsent(role, k -> new CopyOnWriteArraySet<>()).add(tool.name());
 
@@ -41,18 +60,40 @@ public class ToolRegistry {
     }
 
     /**
-     * 全局按名查找。仅供内部/payload 构建使用；
-     * <b>执行工具请用 {@link #executeForRole}</b>，否则绕过角色白名单。
+     * 同名工具出现在多个角色下时的提示。
+     *
+     * <p>这是**合法**用法（例如 {@code get_my_courses} 对学生是"我选的课"、对教师是"我教的课"），
+     * 所以只记日志不报错；但这类名字一旦被误合并就会产生"数据查错"而不是"报错"，
+     * 因此值得在启动日志里留下一条可追溯的记录。
      */
-    public ToolDefinition getTool(String name) {
-        return allTools.get(name);
+    private void warnIfNameUsedByOtherRole(String role, ToolDefinition tool) {
+        for (Map.Entry<String, Map<String, ToolDefinition>> entry : roleTools.entrySet()) {
+            if (!entry.getKey().equals(role) && entry.getValue().containsKey(tool.name())) {
+                log.info("工具名 [{}] 在角色 [{}] 与 [{}] 下各有独立定义（展示名: {} / {}）——"
+                                + "两份定义互不覆盖，模型只会看到自己角色的那一份",
+                        tool.name(), entry.getKey(), role,
+                        entry.getValue().get(tool.name()).displayName(), tool.displayName());
+            }
+        }
+    }
+
+    /**
+     * 按「角色 + 名称」取工具定义。
+     *
+     * <p><b>必须带角色</b>：全局按名查找正是上面那个覆盖 bug 的入口。
+     * 执行工具请用 {@link #executeForRole}（它还额外做白名单校验）。
+     */
+    public ToolDefinition getTool(String role, String name) {
+        Map<String, ToolDefinition> tools = roleTools.get(role);
+        return tools == null ? null : tools.get(name);
     }
 
     public List<ToolDefinition> getToolsByRole(String role) {
         Set<String> names = roleToolNames.get(role);
-        if (names == null || names.isEmpty()) return List.of();
+        Map<String, ToolDefinition> tools = roleTools.get(role);
+        if (names == null || names.isEmpty() || tools == null) return List.of();
         return names.stream()
-                .map(allTools::get)
+                .map(tools::get)
                 .filter(Objects::nonNull)
                 .toList();
     }

@@ -46,7 +46,7 @@ class CheckTimeConflictResolutionTest {
     private static final String STUDENT = "2023001";
 
     private Map<String, Object> payload(Map<String, Object> args) throws Exception {
-        ToolDefinition def = registry.getTool("check_time_conflict");
+        ToolDefinition def = registry.getTool("student", "check_time_conflict");
         assertNotNull(def, "check_time_conflict 未注册");
         ToolExecutionResult result = registry.executeForRole(def, "student", args, STUDENT);
         assertTrue(result.isSuccess(), "工具应以业务载荷返回（错误也走载荷），实际: " + result.status());

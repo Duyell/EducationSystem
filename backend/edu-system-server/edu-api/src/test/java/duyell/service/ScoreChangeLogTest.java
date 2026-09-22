@@ -133,7 +133,7 @@ class ScoreChangeLogTest {
      */
     @Test
     void aiToolPathIsLoggedAsAiSource() throws Exception {
-        ToolDefinition def = toolRegistry.getTool("enter_score");
+        ToolDefinition def = toolRegistry.getTool("teacher", "enter_score");
         assertNotNull(def, "enter_score 工具未注册");
 
         var result = toolRegistry.executeForRole(def, "teacher",

@@ -27,12 +27,17 @@ public class AiController {
     private final ToolRegistry toolRegistry;
 
     /**
-     * AI 对话接口（SSE 流式响应）
+     * AI 对话接口（SSE 流式响应）。
+     *
+     * <p>请求体：{@code {message, conversationId?}}。{@code conversationId} 省略时服务端
+     * 新建一个会话，并通过 SSE 的 {@code conversation} 事件把 id 告诉前端
+     * （见 {@code AiChatService#chat}）。
      */
     @PostMapping("/chat")
     public SseEmitter chat(@RequestBody Map<String, String> body,
                            HttpServletRequest request) {
         String message = body.get("message");
+        String conversationId = body.get("conversationId");
         String token = request.getHeader("token");
 
         if (message == null || message.isBlank()) {
@@ -47,7 +52,7 @@ public class AiController {
             return emitter;
         }
 
-        return aiChatService.chat(message, token);
+        return aiChatService.chat(message, token, conversationId);
     }
 
     /**

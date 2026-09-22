@@ -635,4 +635,41 @@ CREATE TABLE `score_change_log`  (
   INDEX `idx_score_log_operator`(`operator_id` ASC, `create_time` ASC) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic COMMENT = '成绩变更日志';
 
+-- ----------------------------
+-- Table structure for ai_conversation（AI 会话，M2 多轮记忆）
+-- 语义见 docs/sql/2026-09-22-ai-conversation-migration.sql：
+-- 会话落 MySQL（重启不丢、可查、可审计），id 用 UUID（要暴露给前端，自增整数容易被猜），
+-- 归属校验在 ConversationService 强制执行。
+-- ----------------------------
+DROP TABLE IF EXISTS `ai_conversation`;
+CREATE TABLE `ai_conversation`  (
+  `id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '会话 id（UUID）',
+  `user_id` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '归属用户（学号/工号/用户名）',
+  `role` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '创建时的角色：student/teacher/admin',
+  `title` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '会话标题（可用首条用户消息生成）',
+  `message_count` int NOT NULL DEFAULT 0 COMMENT '消息条数（便于列表展示，不参与判定）',
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_conv_user`(`user_id` ASC, `update_time` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic COMMENT = 'AI 会话（M2 多轮记忆）';
+
+-- ----------------------------
+-- Table structure for ai_message（AI 会话消息）
+-- **只追加的完整对话记录**：界面历史与审计读它；模型上下文只是"取最近 N 条"
+-- （窗口大小 ai.memory.max-messages，见 MybatisChatMemory 类注释：
+--  框架的 MessageWindowChatMemory 每轮保存整个窗口，落到本表会重复插入或丢历史）。
+-- 工具调用与工具结果的原始报文在 ai_tool_audit，两处各司其职。
+-- ----------------------------
+DROP TABLE IF EXISTS `ai_message`;
+CREATE TABLE `ai_message`  (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `conversation_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '所属会话',
+  `role` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'user / assistant',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '消息正文',
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_msg_conv`(`conversation_id` ASC, `id` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic COMMENT = 'AI 会话消息（面向用户可见的对话内容）';
+
 SET FOREIGN_KEY_CHECKS = 1;

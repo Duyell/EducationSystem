@@ -1,12 +1,16 @@
 package duyell.ai.guard;
 
+import com.duyell.AiConversation;
+import com.duyell.AiMessage;
 import com.duyell.AiToolAudit;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import duyell.ai.config.AiProperties;
 import duyell.ai.dto.ChatMessage;
 import duyell.ai.service.AiChatService;
 import duyell.ai.service.OpenAiClient;
+import duyell.mapper.AiMessageMapper;
 import duyell.mapper.AiToolAuditMapper;
+import duyell.service.ConversationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -61,6 +65,12 @@ class OutputGuardrailIntegrationTest {
 
     @Autowired
     private AiToolAuditMapper auditMapper;
+
+    @Autowired
+    private ConversationService conversationService;
+
+    @Autowired
+    private AiMessageMapper messageMapper;
 
     /** 测试用的模型桩（@Primary 覆盖真实客户端），由下面的 {@link StubConfig} 注入 */
     @Autowired
@@ -124,29 +134,51 @@ class OutputGuardrailIntegrationTest {
     void textFormToolCallIsRecoveredAndExecuted() throws Exception {
         String token = jwtUtil.generateToken(STUDENT, "student");
 
-        aiChatService.chat("我的绩点是多少？", token);
+        // 本测试走的是**真实落库**路径（后台线程没有事务，不能用 @Transactional 回滚），
+        // 所以自己建会话、用完自己删——否则每跑一次测试，学生账号的会话列表里就多一条垃圾。
+        AiConversation conversation = conversationService.create(STUDENT, "student", "护栏集成测试");
+        String conversationId = conversation.getId();
+        try {
+            aiChatService.chat("我的绩点是多少？", token, conversationId);
 
-        assertTrue(stubClient.modelFinished.await(15, TimeUnit.SECONDS), "模型桩应被调用两轮（恢复后的调用 + 收尾作答）");
-        assertTrue(stubClient.calls.get() >= 2,
-                "恢复出的工具调用执行后必须回到模型继续，实际轮数=" + stubClient.calls.get());
+            assertTrue(stubClient.modelFinished.await(15, TimeUnit.SECONDS), "模型桩应被调用两轮（恢复后的调用 + 收尾作答）");
+            assertTrue(stubClient.calls.get() >= 2,
+                    "恢复出的工具调用执行后必须回到模型继续，实际轮数=" + stubClient.calls.get());
 
-        // ① 恢复出的调用**真的执行了**：审计表里有这条成功记录（说明走了白名单与参数校验）
-        List<AiToolAudit> rows = auditMapper.listByUser(STUDENT, 5);
-        assertNotNull(rows);
-        AiToolAudit latest = rows.stream()
-                .filter(r -> "get_my_gpa".equals(r.getToolName()))
-                .findFirst()
-                .orElse(null);
-        assertNotNull(latest, "应在审计表里看到恢复出的 get_my_gpa 调用；实际=" + rows);
-        assertTrue("SUCCESS".equals(latest.getStatus()), "恢复出的调用应执行成功，实际状态=" + latest.getStatus());
+            // ① 恢复出的调用**真的执行了**：审计表里有这条成功记录（说明走了白名单与参数校验）
+            List<AiToolAudit> rows = auditMapper.listByUser(STUDENT, 5);
+            assertNotNull(rows);
+            AiToolAudit latest = rows.stream()
+                    .filter(r -> "get_my_gpa".equals(r.getToolName()))
+                    .findFirst()
+                    .orElse(null);
+            assertNotNull(latest, "应在审计表里看到恢复出的 get_my_gpa 调用；实际=" + rows);
+            assertTrue("SUCCESS".equals(latest.getStatus()), "恢复出的调用应执行成功，实际状态=" + latest.getStatus());
 
-        // ② 原始 JSON 没有被写回模型历史（否则模型会反复复述这段文本）
-        assertTrue(stubClient.historySeenByModel.size() >= 2, "应有第二轮调用，才能检查历史");
-        String secondRoundHistory = stubClient.historySeenByModel.get(1).toString();
-        assertFalse(secondRoundHistory.contains("\"arguments\""),
-                "写回模型的助手消息里不应残留原始 JSON： " + secondRoundHistory);
-        assertFalse(secondRoundHistory.contains("<tool_call>"),
-                "写回模型的助手消息里不应残留标签： " + secondRoundHistory);
+            // ② 原始 JSON 没有被写回模型历史（否则模型会反复复述这段文本）
+            assertTrue(stubClient.historySeenByModel.size() >= 2, "应有第二轮调用，才能检查历史");
+            String secondRoundHistory = stubClient.historySeenByModel.get(1).toString();
+            assertFalse(secondRoundHistory.contains("\"arguments\""),
+                    "写回模型的助手消息里不应残留原始 JSON： " + secondRoundHistory);
+            assertFalse(secondRoundHistory.contains("<tool_call>"),
+                    "写回模型的助手消息里不应残留标签： " + secondRoundHistory);
+
+            // ③ 落库的对话记录同样干净：护栏不只过滤"发给前端的流"，也过滤"进入多轮记忆的正文"。
+            //    否则那段畸形 JSON 会成为下一轮的上下文，模型会把自己上次的坏输出再学一遍。
+            List<AiMessage> persisted = messageMapper.listByConversation(conversationId);
+            String transcript = persisted.toString();
+            assertFalse(transcript.contains("\"arguments\""),
+                    "落库的助手回复里不应残留原始工具调用 JSON：" + transcript);
+            assertFalse(transcript.contains("tool_call"),
+                    "落库的助手回复里不应残留工具调用标签：" + transcript);
+            assertTrue(persisted.stream().anyMatch(m -> "assistant".equals(m.getRole())
+                            && m.getContent().contains("3.8834")),
+                    "模型最终的可见回答应被记入会话： " + transcript);
+        } finally {
+            conversationService.delete(conversationId, STUDENT);
+            assertTrue(messageMapper.listByConversation(conversationId).isEmpty(),
+                    "测试结束应清干净自己建的会话消息");
+        }
     }
 }
 
