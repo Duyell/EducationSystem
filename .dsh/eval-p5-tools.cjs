@@ -35,8 +35,10 @@
  * TWO KINDS OF ASSERTION, DELIBERATELY SCORED DIFFERENTLY
  *   1. HARNESS INVARIANTS -- the contract the backend must honour: the role-scoped tool surface,
  *      risk levels, no dangerous execution before confirmation, a cancellation notice after a
- *      decline, the tool actually running on the read-only path. These must be green; a failure
- *      here fails the run.
+ *      decline, the tool actually running on the read-only path, and the OUTPUT GUARDRAIL
+ *      (the answer body must never contain raw tool-call JSON -- small models sometimes emit the
+ *      call as prose, and the backend now recovers it into a real call instead of showing it).
+ *      These must be green; a failure here fails the run.
  *   2. ROUTING ACCURACY -- did the model pick the right tool. That is a property of the MODEL,
  *      not of this code, and it is scored: `ROUTING: n/total`. It is printed loudly and every
  *      miss is named with a diagnosis (asked a clarifying question / emitted the tool call as
@@ -355,6 +357,14 @@ async function main() {
       check('   answered with text, not just a tool call', text.trim().length > 0, 'empty answer')
       check('   the chosen tool really ran (not just named)', executed.some((t) => expectAny.includes(t)), 'executed=[' + executed.join(',') + ']')
     }
+    // HARNESS INVARIANT (output guardrail, applies to every case): the answer body must never show
+    // raw tool-call syntax. Small models occasionally emit the call as PROSE instead of using the
+    // tool-call channel; without the guardrail the user sees `{"name": ..., "arguments": ...}` on
+    // screen while nothing actually happens. The backend recovers such text into a real call (same
+    // whitelist / schema / confirmation gates) and keeps it off the screen -- this assertion is the
+    // regression net for that guardrail: it can only go red if the guardrail stops working.
+    const rawCallInText = /<tool_call>|<\/tool_call>|\{"name"\s*:\s*"[a-z_]+"\s*,\s*"arguments"/.test(text)
+    check('   answer body shows no raw tool-call JSON', !rawCallInText, text.slice(0, 160))
     return { text, picked, executed, events }
   }
 

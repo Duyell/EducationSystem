@@ -51,34 +51,33 @@
 > 并已产出 **M3 的 RAG 语料（`docs/policies/` 10 份制度文件）**，全部推送 `origin/main`。
 > 下一步：**① 输出护栏（小）→ ② M2 框架化迁移（Spring AI + 多轮记忆）**。
 
-> ### ⏸ 暂停状态（2026-09-22 第四轮，下次直接从这里开始）
+> ### ⏸ 暂停状态（2026-09-22 第五轮，下次直接从这里开始）
 >
-> - **代码状态**：教务扩展 P5 + 政策文档 + **学业预警** + **JW-06 审计修订** 均已提交推送，`main` = 见 `git log`。
+> - **代码状态**：教务扩展 P5 + 政策文档 + 学业预警 + **输出护栏（本轮新增）** 均已提交推送，`main` = 见 `git log`。
 >   工作区除 `frontend/.vscode/`（未跟踪，待你决定是否提交）外干净。
-> - **服务状态**：**Redis / 后端 8080 / 前端 5173 三个都在跑**（本轮做了浏览器层验证）。
->   ⚠️ **DSH 宿主崩溃会带走这些后台任务**（本轮发生两次），重开时按第 1 节重新起。
-> - **本轮新增交付（学业预警，已完整落地）**：
->   口径 = **未通过课程学分累计 ≥ 8 学分**（配置 `ACADEMIC_WARNING_THRESHOLD`）；通知 = **登录弹一次 + 可标记已读**。
->   后端 `AcademicWarningServiceImpl` + `GET /academic-warning/my` + `POST /academic-warning/my/read` + 表 `academic_warning`；
->   前端 `composables/useAcademicWarning.ts`（在 `Layout` 挂载时触发）；助手工具 `get_my_academic_warning`（工具面 30 → **31**）。
->   验证：8 项 Java 测试 + `.dsh/verify-warning.ps1` 28 项 + **`.dsh/verify-warning-ui.cjs` 27 项浏览器断言**，全绿。
->   **跑 UI 脚本前先 `.\.dsh\reset-academic-warning.ps1`**（"只弹一次"天生是一次性断言，必须先重置夹具）。
+> - **服务状态**：**Redis / 后端 8080 都在跑**（本轮做了真实模型回归）；前端 5173 这轮没用到。
+>   ⚠️ **DSH 宿主崩溃会带走这些后台任务**（本轮发生过两次），重开时按第 1 节重新起。
+> - **本轮新增交付（输出护栏，计划里的 B 线已收口）**：
+>   `duyell.ai.guard.ToolCallTextGuard` 接进 `AiChatService`：模型把工具调用**写成正文**时，
+>   扣住原始 JSON 不展示，并把它**恢复成真实工具调用继续走**（白名单 / 参数校验 / 确认卡片 / 审计全照旧，
+>   **不新增任何权限**）。验证：9 项单测 + **1 项接线层集成测试**（继承 `OpenAiClient` 的桩，必现"坏模型"，
+>   断言恢复出的调用**落审计且 SUCCESS**）+ 评测对每个用例断言"正文不出现工具调用 JSON"；
+>   真实模型回归 `--only=get_my_gpa,check_time_conflict` → PASS=45 FAIL=0。详见开发记录 **(十五)**。
 > - **审计状态**：`docs/policies/` 的 **JW-01、JW-06 已审完并修订**（v1.2 / v1.1），JW-02~05、JW-07~10 待继续审；
 >   入口 `docs/policies/README.md`（"需你重点审的 7 处" + 作者审计进度表）。
 > - **顺手修掉的三个真缺陷**：① AI 助手录入成绩绕过 `ScoreService`（`passed` 不写、精度不一致）；
 >   ② `evaluate_teacher` 评分范围 1~100 与界面 5 星不一致；③ **成绩删除一直是 500**
 >   （`ScoreMapper.deleteByIds` 参数名与 XML 的 `collection` 不匹配，此前无任何测试覆盖）。
 >   详见开发记录 **(十一)(十四)**。
-> - **下一步二选一**（等你定）：
->   **① 输出护栏**（小、独立：模型偶发把工具调用写成正文流给用户，要做成"不展示 + 当真正调用继续走"）；
->   **② M2 框架化迁移**（Spring AI + Redis 多轮记忆 + 会话管理，最长的一块）。
-> - **动手前**（前三条都是本轮踩过的）：
+> - **下一步只剩一件**：**M2 框架化迁移**（Spring AI + Redis 多轮记忆 + 会话管理，最长的一块）。
+>   建议动工前先跑一遍完整 `node .dsh/eval-p5-tools.cjs` 存档 `ROUTING` 基线（约 10 分钟）。
+> - **动手前**（前四条都是本仓库踩过的）：
 >   1. 先起 Redis，否则 `AgentRateLimiterTest`/`LoginInterceptorTest` 会连不上 6379 而红
 >      （**用受管后台任务起，`Start-Process` 起的会随命令结束被杀**）；
->   2. `mvn -o -B test -pl edu-api -am` 应 **164 项**全绿；
+>   2. `mvn -o -B test -pl edu-api -am` 应 **174 项**全绿；
 >   3. **改了接口/工具/Mapper 就要先 `mvn -o -B package -DskipTests` 再起后端**（只跑 test 不重打包 =
 >      拿旧 jar 测，症状是日志里满屏 `NoResourceFoundException`），然后
->      `node .dsh/eval-p5-tools.cjs --inventory-only`（39 项）并记录 `ROUTING` 分数当基线；
+>      `node .dsh/eval-p5-tools.cjs --inventory-only`（39 项）；
 >   4. **`.ps1` 改完必须数非 ASCII 字节**（必须为 0）：`[System.IO.File]::ReadAllBytes(f)`；
 >      `git commit -m` 里带引号的多行消息会被 PowerShell 拆坏 → 用 `git commit -F <文件>`。
 > - **本次工作记录**：`docs/开发记录.md` 第 **(十四)**（成绩删除修复 + 浏览器验证 + JW-06 修订）、
@@ -308,13 +307,22 @@ npm run build-only            # 沙箱下需提权：Vite 配置加载会 child_
 4. **注意**：引入 Spring AI 后 `AiChatService` 的手写循环与 `OpenAiClient` 会逐步被替代，
    迁移期间应保留旧实现一个版本周期作为回归对照。
 
-**B. 输出护栏（建议作为 M2 的前置小课题，独立可交付）**
-- 现象与证据：P5 评测实测到 7B 模型把工具调用**写成正文**（`{"name":...,"arguments":...}` + `</tool_call>`）
-  流给用户，后端没收到调用、操作没发生，用户却看到原始 JSON。见 `docs/开发记录.md` (十) 末节。
-- 要做的事：流式过程中识别"这段文本其实是一次工具调用"——**不展示给用户**，
-  并把它当作真正的调用继续走（依然过角色白名单、参数 Schema 校验、危险操作确认卡片）。
-- 为什么值得单独做：这是"输出护栏（Guardrail）"这一支柱的第一个真实用例，
-  且**只能靠评测发现**（接口测试与类型检查都看不见流里多了什么）。
+**B. 输出护栏 —— ✅ 已完成（2026-09-22，M2 的前置小课题）**
+- 现象（P5 评测实测，见 `docs/开发记录.md` (十) 末节）：7B 模型偶尔把工具调用**写成正文**
+  （`{"name":...,"arguments":...}` + `</tool_call>`）流给用户 → 用户看到原始 JSON，而**操作根本没发生**。
+- 已实现：`duyell.ai.guard.ToolCallTextGuard`（流式识别 + 扣留）接进 `AiChatService`，
+  把恢复出的调用**当成真实工具调用继续走**——角色白名单、参数 Schema 校验、危险操作确认卡片、
+  审计**全部照旧**，因此护栏不新增任何权限（提示注入让它复述 JSON 也一样要过这些闸门）。
+- 取舍：宁可漏认不可吞字（解析不出来就原样展示）；缓冲上限 8000 字符避免卡住回答；
+  原始 JSON 不写回模型历史（否则模型会反复复述）。
+- 验证：`ToolCallTextGuardTest` 9 项（含**实测抓包原文逐字符喂入**）+
+  `OutputGuardrailIntegrationTest`（继承 `OpenAiClient` 的桩，必现"坏模型"，断言恢复出的调用**落审计且 SUCCESS**）
+  + 评测对**每个用例**断言"回答正文不出现工具调用 JSON"。详见开发记录 **(十五)**。
+
+> 已完成（不必重做）：教务业务扩展 P1–P5 全部交付并验证（培养计划/绩点 → 排课 →
+> 选课 → 考试 → Agent 工具与评测）。设计文档 §4.5 规划的 11 个工具已全部上线；
+> 加上学业预警工具，工具面从 21 个扩到 **31 个**（学生 17 / 教师 7 / 管理员 9）。
+> 另有 **M3 的 RAG 语料**：`docs/policies/` 10 份制度文件（作者正在逐章审计，JW-01、JW-06 已审完并修订）。
 - 验收：新增一条评测断言——**回答正文里不允许出现工具调用 JSON**，
   并让"文本形态工具调用"从"偶发失败"变成"被正确接住"。
 

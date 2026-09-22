@@ -11,6 +11,7 @@ import duyell.ai.confirm.PendingActionStore;
 import duyell.ai.dto.ChatMessage;
 import duyell.ai.limit.AgentRateLimiter;
 import duyell.ai.tool.ToolArgumentValidator;
+import duyell.ai.guard.ToolCallTextGuard;
 import duyell.ai.tool.ToolDefinition;
 import duyell.ai.tool.ToolExecutionResult;
 import duyell.ai.tool.ToolRegistry;
@@ -253,15 +254,25 @@ public class AiChatService {
             List<ChatMessage.ToolCall> currentToolCalls = new ArrayList<>();
             String[] currentReasoningContent = {null};
 
+            // 输出护栏：小模型偶尔把工具调用**写成正文**（实测 qwen2.5:7b 会输出
+            // `{"name": "...", "arguments": {...}}`）。它一边挡住这段原始 JSON 不展示给用户，
+            // 一边把调用恢复出来，下面按**正常工具调用**继续走（白名单 / Schema 校验 / 确认卡片 / 审计全都不变）。
+            ToolCallTextGuard guard = new ToolCallTextGuard(objectMapper);
+
             openAiClient.streamChat(
                     messages,
                     toolsPayload,
                     // onToken - forward to frontend
                     token -> {
+                        // 护栏可能扣住一部分内容（怀疑是工具调用），只把确认安全的文本发出去
+                        String safe = guard.feed(token);
+                        if (safe.isEmpty()) {
+                            return;
+                        }
                         try {
                             emitter.send(SseEmitter.event()
                                     .name("message")
-                                    .data(Map.of("type", "token", "content", token)));
+                                    .data(Map.of("type", "token", "content", safe)));
                         } catch (IOException e) {
                             log.warn("Failed to send token to SSE", e);
                         }
@@ -291,10 +302,36 @@ public class AiChatService {
             );
 
             if (!toolCallsReceived[0]) {
-                // No tool calls, response is complete
-                sendSse(emitter, "done", Map.of("type", "done"));
-                emitter.complete();
-                return;
+                ToolCallTextGuard.Result recovered = guard.finish();
+                if (recovered.calls().isEmpty()) {
+                    // 正常结束：把护栏扣住的普通文本补发出去（不能吞掉回答）
+                    if (!recovered.trailingText().isEmpty()) {
+                        sendSse(emitter, "message", Map.of("type", "token", "content", recovered.trailingText()));
+                    }
+                    sendSse(emitter, "done", Map.of("type", "done"));
+                    emitter.complete();
+                    return;
+                }
+
+                // 模型把工具调用写成了正文 → 恢复成真实调用继续走
+                log.warn("模型把工具调用写成了正文，已恢复为真实调用: user={}, count={}, tools={}",
+                        userId, recovered.calls().size(),
+                        recovered.calls().stream().map(ToolCallTextGuard.RecoveredCall::name).toList());
+                sendSse(emitter, "message", Map.of(
+                        "type", "status",
+                        "content", "🔧 已识别模型以文本形式输出的工具调用，正在按正常流程处理"));
+                int index = 0;
+                for (ToolCallTextGuard.RecoveredCall call : recovered.calls()) {
+                    currentToolCalls.add(ChatMessage.ToolCall.builder()
+                            .id("recovered-" + UUID.randomUUID())
+                            .type("function")
+                            .index(index++)
+                            .function(ChatMessage.ToolCall.Function.builder()
+                                    .name(call.name())
+                                    .arguments(call.arguments())
+                                    .build())
+                            .build());
+                }
             }
 
             // Add assistant message with tool calls
