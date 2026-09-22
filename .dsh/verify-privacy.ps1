@@ -127,6 +127,51 @@ Check '/ai/tools exposes enter_score' ($s.body -match 'enter_score') 'tool missi
 Check 'enter_score usualScore is bounded 0..100' ($s.body -match '"maximum":100') 'no maximum in schema'
 Check 'enter_score documents the 0..100 rule in text' ($s.body -match '0~100') 'description missing the rule'
 
+# ---------------------------------------------------------------- 5. score change log
+Write-Host "`n=== 5. score change log (UI edits are traceable too) ===" -ForegroundColor Cyan
+# Use course 10 (teacher 10001) + student 2024002, which has no seeded grade there.
+$admin = Login 'admin01' '123456'
+Check 'admin01 login' ($null -ne $admin)
+
+# clean slate for repeatability
+Sql "delete from score where course_id=10 and student_id='2024002'" | Out-Null
+Sql "delete from score_change_log where course_id=10 and student_id='2024002'" | Out-Null
+
+$r = Api 'POST' '/score' $teacher1 '{"courseId":10,"studentId":"2024002","usualScore":80,"examScore":90}'
+Check 'teacher can enter a grade (HTTP 200)' ($r.status -eq 200 -and $r.body -match '"code":"200"') ($r.body.Substring(0, [Math]::Min(160, $r.body.Length)))
+$scoreId = (Sql "select id from score where course_id=10 and student_id='2024002'") | Select-Object -First 1
+
+$r = Api 'PUT' '/score' $teacher1 ('{"id":' + $scoreId + ',"courseId":10,"studentId":"2024002","examScore":30}')
+Check 'teacher can change the grade (HTTP 200)' ($r.status -eq 200 -and $r.body -match '"code":"200"') ($r.body.Substring(0, [Math]::Min(160, $r.body.Length)))
+
+$r = Api 'GET' '/score/change-log?page=1&pageSize=50&studentId=2024002' $admin $null
+Check 'admin can read the change log' ($r.status -eq 200 -and $r.body -match '"code":"200"') ($r.body.Substring(0, [Math]::Min(200, $r.body.Length)))
+Check 'log records the INSERT' ($r.body -match '"operation":"INSERT"') 'no INSERT entry'
+Check 'log records the UPDATE with before and after' (($r.body -match '"operation":"UPDATE"') -and ($r.body -match '"beforeExam"') -and ($r.body -match '"afterExam"')) 'no UPDATE detail'
+Check 'before/after scores differ (86 -> 50)' (($r.body -match '"beforeTotal":86') -and ($r.body -match '"afterTotal":50')) ($r.body.Substring(0, [Math]::Min(300, $r.body.Length)))
+Check 'log records who did it' ($r.body -match '"operatorId":"10001"') 'operator missing'
+Check 'log records the source as UI (not AI)' ($r.body -match '"source":"UI"') 'source missing or wrong'
+
+# the change log is admin-only (order-sensitive rule before /score/**)
+$r = Api 'GET' '/score/change-log?page=1&pageSize=10' $teacher1 $null
+Check 'teacher is refused the change log (403)' ($r.status -eq 403) ("status=" + $r.status)
+$r = Api 'GET' '/score/change-log?page=1&pageSize=10' $student $null
+Check 'student is refused the change log (403)' ($r.status -eq 403) ("status=" + $r.status)
+$r = Api 'GET' '/score/change-log?page=1&pageSize=10' $null $null
+Check 'anonymous is refused the change log (401)' ($r.status -eq 401) ("status=" + $r.status)
+
+# AI-driven change must be marked as AI: ask the assistant? That needs a model; the Java test
+# (ScoreChangeLogTest.aiToolPathIsLoggedAsAiSource) proves the AI source through the real tool path.
+
+# cleanup: remove the probe grade and its log rows, then prove it is clean (repeatable script)
+$r = Api 'DELETE' ('/score/' + $scoreId) $teacher1 $null
+Check 'probe grade deleted' ($r.status -eq 200 -and $r.body -match '"code":"200"') ($r.body.Substring(0, [Math]::Min(160, $r.body.Length)))
+$deleteLogged = (Sql "select count(*) from score_change_log where course_id=10 and student_id='2024002' and operation='DELETE'") | Select-Object -First 1
+Check 'the deletion itself was logged as DELETE' ("$deleteLogged" -eq '1') ("rows=" + $deleteLogged)
+Sql "delete from score_change_log where course_id=10 and student_id='2024002'" | Out-Null
+$left = (Sql "select count(*) from score_change_log where course_id=10 and student_id='2024002'") | Select-Object -First 1
+Check 'log rows cleaned up (script is repeatable)' ("$left" -eq '0') ("rows=" + $left)
+
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host ("RESULT: PASS=" + $pass + "  FAIL=" + $fail) -ForegroundColor $(if ($fail -eq 0) { 'Green' } else { 'Red' })
 Write-Host "========================================" -ForegroundColor Cyan

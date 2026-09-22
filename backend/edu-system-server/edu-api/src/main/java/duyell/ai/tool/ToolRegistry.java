@@ -1,5 +1,6 @@
 package duyell.ai.tool;
 
+import duyell.audit.ChangeContext;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -96,11 +97,37 @@ public class ToolRegistry {
                     System.currentTimeMillis() - start);
         }
         try {
-            String result = def.executor().execute(args, userId, role);
+            // 标记"这次改动来自智能助手"，并带上调用者身份：
+            // 业务层（如成绩变更日志）据此把 AI 发起的改动与界面操作区分开
+            final String result = runAsAi(def, role, args, userId);
             return ToolExecutionResult.ok(result, System.currentTimeMillis() - start);
         } catch (Exception e) {
             // 异常细节只进日志，不回灌模型（避免泄露 SQL / 表结构 / 堆栈）
             return ToolExecutionResult.failed(e, System.currentTimeMillis() - start);
         }
+    }
+
+    /**
+     * 在"AI 调用者"上下文中执行工具。
+     *
+     * <p>工具执行器声明了 {@code throws Exception}，而 {@link ChangeContext#runWith} 接的是
+     * {@code Runnable}（不能抛受检异常），因此这里把异常接住再抛给调用方——
+     * 语义与原来一致（外层 try/catch 统一处理），只是多了一层上下文包装。
+     */
+    private static String runAsAi(ToolDefinition def, String role, Map<String, Object> args, String userId)
+            throws Exception {
+        final String[] result = new String[1];
+        final Exception[] failure = new Exception[1];
+        ChangeContext.runWith(userId, role, ChangeContext.SOURCE_AI, () -> {
+            try {
+                result[0] = def.executor().execute(args, userId, role);
+            } catch (Exception e) {
+                failure[0] = e;
+            }
+        });
+        if (failure[0] != null) {
+            throw failure[0];
+        }
+        return result[0];
     }
 }

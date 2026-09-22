@@ -1,12 +1,16 @@
 package duyell.service.impl;
 
 import com.duyell.Score;
+import com.duyell.ScoreChangeLog;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
+import duyell.audit.ChangeContext;
+import duyell.mapper.ScoreChangeLogMapper;
 import duyell.mapper.ScoreMapper;
 import duyell.service.GpaService;
 import duyell.service.ScoreService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import utils.BusinessException;
 import utils.PageResult;
@@ -18,11 +22,13 @@ import java.util.List;
 /**
  * @author duyell
  */
+@Slf4j
 @RequiredArgsConstructor
 @Service
 public class ScoreServiceImpl implements ScoreService {
     private final ScoreMapper scoreMapper;
     private final GpaService gpaService;
+    private final ScoreChangeLogMapper changeLogMapper;
 
     /** 平时成绩权重 */
     private static final BigDecimal USUAL_WEIGHT = BigDecimal.valueOf(0.4);
@@ -50,41 +56,98 @@ public class ScoreServiceImpl implements ScoreService {
         // passed 是派生字段，只在此处维护（设计文档 §3.3 风险 2）
         score.setPassed(calcPassed(score.getTotalScore(), score.getMakeupScore()));
         scoreMapper.add(score);
+        // 留痕：新增（before 为空）
+        writeLog(ScoreChangeLog.OP_INSERT, score.getId(), score.getCourseId(), score.getStudentId(),
+                null, score);
     }
 
     @Override
     public void delete(Integer id) {
+        Score before = scoreMapper.selectById(id);
         scoreMapper.deleteByIds(List.of(id));
+        if (before != null) {
+            // 留痕：删除（after 为空）——成绩被删掉后仍要能查到"曾经是多少、谁删的"
+            writeLog(ScoreChangeLog.OP_DELETE, id, before.getCourseId(), before.getStudentId(),
+                    before, null);
+        }
     }
 
     @Override
     public void update(Score score) {
-        // 只传单项分数时，取现有记录合并后再重算总分，避免另一项被清零
-        if (score.getUsualScore() == null || score.getExamScore() == null
-                || score.getMakeupScore() == null) {
-            Score existing = scoreMapper.selectById(score.getId());
-            if (existing == null) {
-                throw new BusinessException("成绩记录不存在");
-            }
-            if (score.getUsualScore() == null) {
-                score.setUsualScore(existing.getUsualScore());
-            }
-            if (score.getExamScore() == null) {
-                score.setExamScore(existing.getExamScore());
-            }
-            if (score.getMakeupScore() == null) {
-                score.setMakeupScore(existing.getMakeupScore());
-            }
+        // 先取原记录：既用于"只传单项时合并"，也用于留痕的 before 快照
+        Score before = scoreMapper.selectById(score.getId());
+        if (before == null) {
+            throw new BusinessException("成绩记录不存在");
+        }
+        if (score.getUsualScore() == null) {
+            score.setUsualScore(before.getUsualScore());
+        }
+        if (score.getExamScore() == null) {
+            score.setExamScore(before.getExamScore());
+        }
+        if (score.getMakeupScore() == null) {
+            score.setMakeupScore(before.getMakeupScore());
         }
         validateRange(score);
         score.setTotalScore(calcTotal(score));
         score.setPassed(calcPassed(score.getTotalScore(), score.getMakeupScore()));
         scoreMapper.update(score);
+        // 留痕：修改（记下改前改后，成绩申诉时最需要的就是这两个快照）
+        writeLog(ScoreChangeLog.OP_UPDATE, score.getId(), before.getCourseId(), before.getStudentId(),
+                before, score);
     }
 
     @Override
     public Score selectById(Integer scoreId) {
         return scoreMapper.selectById(scoreId);
+    }
+
+    @Override
+    public PageResult<ScoreChangeLog> changeLog(Integer pageNum, Integer pageSize,
+                                                String studentId, Integer courseId, String operatorId) {
+        Page<ScoreChangeLog> pageResult = PageHelper.startPage(pageNum, pageSize);
+        List<ScoreChangeLog> rows = changeLogMapper.list(studentId, courseId, operatorId);
+        return new PageResult<>(pageResult.getTotal(), rows);
+    }
+
+    /**
+     * 写一条成绩变更日志。
+     *
+     * <p>操作人与来源取自 {@link ChangeContext}（由 REST / AI 两个边界设置）。
+     * 日志写入失败**不应影响成绩本身**——这里刻意吞掉异常并记 error 日志：
+     * 让"记不上日志"把一次正常的成绩录入变成失败，是更糟的取舍。
+     */
+    private void writeLog(String operation, Integer scoreId, Integer courseId, String studentId,
+                          Score before, Score after) {
+        try {
+            ChangeContext ctx = ChangeContext.current();
+            ScoreChangeLog log = new ScoreChangeLog();
+            log.setOperatorId(ctx.operatorId());
+            log.setOperatorRole(ctx.operatorRole());
+            log.setSource(ctx.source());
+            log.setOperation(operation);
+            log.setScoreId(scoreId);
+            log.setCourseId(courseId);
+            log.setStudentId(studentId);
+            if (before != null) {
+                log.setBeforeUsual(before.getUsualScore());
+                log.setBeforeExam(before.getExamScore());
+                log.setBeforeMakeup(before.getMakeupScore());
+                log.setBeforeTotal(before.getTotalScore());
+                log.setBeforePassed(before.getPassed());
+            }
+            if (after != null) {
+                log.setAfterUsual(after.getUsualScore());
+                log.setAfterExam(after.getExamScore());
+                log.setAfterMakeup(after.getMakeupScore());
+                log.setAfterTotal(after.getTotalScore());
+                log.setAfterPassed(after.getPassed());
+            }
+            changeLogMapper.add(log);
+        } catch (Exception e) {
+            log.error("成绩变更日志写入失败（不影响成绩本身）: operation={}, course={}, student={}",
+                    operation, courseId, studentId, e);
+        }
     }
 
     /**

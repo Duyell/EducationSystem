@@ -602,4 +602,37 @@ CREATE TABLE `academic_warning`  (
   INDEX `idx_warning_student`(`student_id` ASC) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic COMMENT = '学业预警已读水位线';
 
+-- ----------------------------
+-- Table structure for score_change_log（成绩变更日志，JW-09 §4.5）
+-- 语义见 docs/sql/2026-09-22-score-change-log-migration.sql：
+-- 成绩新增/修改/删除都留痕，记下**改前与改后**快照、操作人、以及来源（界面 UI / 智能助手 AI）。
+-- 挂钩点在 ScoreServiceImpl（全部成绩写入的必经之路），因此两条路径都覆盖。
+-- ----------------------------
+DROP TABLE IF EXISTS `score_change_log`;
+CREATE TABLE `score_change_log`  (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `operator_id` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '操作人（学号/工号/用户名）',
+  `operator_role` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '操作人角色',
+  `source` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'UI' COMMENT '来源：UI 界面/接口，AI 智能助手',
+  `operation` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'INSERT/UPDATE/DELETE',
+  `score_id` int NULL DEFAULT NULL COMMENT '成绩记录 id',
+  `course_id` int NOT NULL COMMENT '课程 id',
+  `student_id` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '学号',
+  `before_usual` decimal(6,3) NULL DEFAULT NULL,
+  `before_exam` decimal(6,3) NULL DEFAULT NULL,
+  `before_makeup` decimal(6,3) NULL DEFAULT NULL,
+  `before_total` decimal(6,3) NULL DEFAULT NULL,
+  `before_passed` tinyint NULL DEFAULT NULL,
+  `after_usual` decimal(6,3) NULL DEFAULT NULL,
+  `after_exam` decimal(6,3) NULL DEFAULT NULL,
+  `after_makeup` decimal(6,3) NULL DEFAULT NULL,
+  `after_total` decimal(6,3) NULL DEFAULT NULL,
+  `after_passed` tinyint NULL DEFAULT NULL,
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_score_log_student`(`student_id` ASC, `create_time` ASC) USING BTREE,
+  INDEX `idx_score_log_course`(`course_id` ASC, `create_time` ASC) USING BTREE,
+  INDEX `idx_score_log_operator`(`operator_id` ASC, `create_time` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic COMMENT = '成绩变更日志';
+
 SET FOREIGN_KEY_CHECKS = 1;

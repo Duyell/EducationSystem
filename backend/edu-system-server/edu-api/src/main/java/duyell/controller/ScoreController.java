@@ -1,6 +1,8 @@
 package duyell.controller;
 
 import com.duyell.Score;
+import com.duyell.ScoreChangeLog;
+import duyell.audit.ChangeContext;
 import duyell.service.CourseService;
 import duyell.service.ScoreService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -54,7 +56,9 @@ public class ScoreController {
         if (!checkCourseOwnership(score.getCourseId(), request)) {
             return Result.error("403", "无权限为该课程录入成绩");
         }
-        scoreService.add(score);
+        // 留痕上下文：谁在操作、来源是界面（ScoreServiceImpl 会写成绩变更日志）
+        ChangeContext.runWith(getUsername(request), getRole(request), ChangeContext.SOURCE_UI,
+                () -> scoreService.add(score));
         return Result.success("添加成功");
     }
 
@@ -67,7 +71,8 @@ public class ScoreController {
         if (!checkCourseOwnership(score.getCourseId(), request)) {
             return Result.error("403", "无权限删除该成绩");
         }
-        scoreService.delete(id);
+        ChangeContext.runWith(getUsername(request), getRole(request), ChangeContext.SOURCE_UI,
+                () -> scoreService.delete(id));
         return Result.success("删除成功");
     }
 
@@ -76,8 +81,22 @@ public class ScoreController {
         if (!checkCourseOwnership(score.getCourseId(), request)) {
             return Result.error("403", "无权限修改该成绩");
         }
-        scoreService.update(score);
+        ChangeContext.runWith(getUsername(request), getRole(request), ChangeContext.SOURCE_UI,
+                () -> scoreService.update(score));
         return Result.success("更新成功");
+    }
+
+    /**
+     * 成绩变更日志（仅管理员）。制度依据 JW-09 §4.5：
+     * 成绩是可申诉数据，界面直接改也必须留痕（此前只有经 AI 助手的变更写审计表）。
+     */
+    @GetMapping("/change-log")
+    public Result<PageResult<ScoreChangeLog>> changeLog(@RequestParam(defaultValue = "1") Integer page,
+                                                       @RequestParam(defaultValue = "20") Integer pageSize,
+                                                       @RequestParam(required = false) String studentId,
+                                                       @RequestParam(required = false) Integer courseId,
+                                                       @RequestParam(required = false) String operatorId) {
+        return Result.success(scoreService.changeLog(page, pageSize, studentId, courseId, operatorId));
     }
 
     /** 教师操作前校验课程归属；管理员直接放行（拦截器已保证无学生到达此处） */
@@ -94,5 +113,13 @@ public class ScoreController {
 
     private String getUsername(HttpServletRequest request) {
         return jwtUtil.getUsernameFromToken(request.getHeader("token"));
+    }
+
+    private String getRole(HttpServletRequest request) {
+        try {
+            return jwtUtil.getRoleFromToken(request.getHeader("token"));
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

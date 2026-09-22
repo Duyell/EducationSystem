@@ -1,0 +1,30 @@
+feat(audit): 成绩变更日志——界面改分也留痕（作者拍板"加"，待拍板事项清零）
+
+需求：成绩是可申诉的敏感数据。此前只有经 AI 助手的变更写 ai_tool_audit，教师/管理员在界面
+直接改成绩什么都不记 —— 学生质疑"这门课怎么从 90 变成 60"时查不到任何依据。
+
+实现
+- 表 score_change_log：操作人/角色、时间、课程、学生、成绩记录 id、操作（INSERT/UPDATE/DELETE）、
+  **改前与改后**完整快照（平时/考试/补考/总分/是否通过）、来源（UI 界面或接口 / AI 智能助手）
+- 挂钩点只有一处：ScoreServiceImpl 的 add/update/delete（全部成绩写入的必经之路，
+  界面与 AI 两条路径都不可能绕过；这在上一轮"AI 工具改走 ScoreService"之后才真正成立）
+- ChangeContext（ThreadLocal）在两个边界设置操作人与来源：ScoreController（UI）、
+  ToolRegistry.executeForRole（AI）；默认 unknown+UI，宁可"未知操作人"也不错记成别人
+- 日志写失败只记 error 日志、不影响成绩本身（writeLog 内 try/catch）
+- GET /score/change-log（仅管理员；可按学号/课程/操作人筛选）；拦截器规则排在 /score/** 之前
+
+测试与验证
+- ScoreChangeLogTest 4 项：三个操作都留痕且 before/after 可对比（86 -> 50、DELETE 记下删除前的值）；
+  UI 来源；**AI 来源用真实工具执行链路验证**（经 ToolRegistry 调 enter_score，而非手动 set 上下文）；
+  过滤条件真的生效（不匹配则查不到，避免"恒真断言"）
+- .dsh/verify-privacy.ps1 扩到 40 项：教师录分->改分->管理员查日志（INSERT/UPDATE/操作人/来源）、
+  教师与学生 403、匿名 401、删除也留痕、清理后为 0（脚本可重复跑）
+- mvn test：186 项全绿（+4）
+
+数据库
+- docs/sql/2026-09-22-score-change-log-migration.sql + edujwxt.sql 双份同步（新装库同样有这张表）
+
+文档
+- JW-09 §4.5-4.7（改前→改后记什么、仅管理员可查、记录失败不影响成绩）+ 对照表
+- policies/README：待拍板 8 项**全部收口**（当前无待决事项），常量表补"成绩变更"一行
+- docs/开发记录.md 新增（十七）；并注明可选后续：给管理员加日志查看页面（API 已就绪）

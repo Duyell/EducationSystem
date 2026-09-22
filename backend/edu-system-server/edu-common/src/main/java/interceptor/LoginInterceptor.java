@@ -55,6 +55,9 @@ public class LoginInterceptor implements HandlerInterceptor {
             new AuthRule("/course/**", Set.of("POST", "PUT", "DELETE"), ADMIN),
             // 成绩模块
             new AuthRule("/score/my", Set.of("GET"), ADMIN, STUDENT),
+            // 成绩变更日志：**仅管理员**（谁改过谁的成绩，只有教务能查）。
+            // ⚠️ 必须排在 /score/** 之前，否则教师也能查（顺序敏感，本类已多次强调）。
+            new AuthRule("/score/change-log", Set.of("GET"), ADMIN),
             new AuthRule("/score/**", null, ADMIN, TEACHER),
             // 选课模块：仅学生
             new AuthRule("/course-selection/**", null, ADMIN, STUDENT),
