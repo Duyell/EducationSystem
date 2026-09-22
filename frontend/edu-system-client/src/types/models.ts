@@ -678,3 +678,84 @@ export interface AcademicWarningStatus {
   lastReadAt: string | null
   courses: AcademicWarningCourse[]
 }
+
+// ===================== M2：AI 会话与多轮记忆 =====================
+// 与后端 AiConversation / AiMessage 一一对应（见 backend .../com/duyell/AiConversation.java）
+// ⚠️ 会话 id 是 **UUID 字符串**，不是自增数字：要直接暴露给前端（SSE 事件、URL 参数），
+//    自增整数容易被猜。归属校验由服务端强制，前端改 URL 只会得到"无权访问"。
+
+/** AI 会话（列表项） */
+export interface AiConversation {
+  id: string
+  /** 归属用户（学号/工号/用户名）——服务端按 token 赋值，前端只读 */
+  userId: string
+  /** 创建时的角色：student/teacher/admin（决定用哪套 system prompt） */
+  role: string
+  title: string
+  /** 消息条数；仅用于列表展示 */
+  messageCount: number
+  createTime: string
+  updateTime: string
+}
+
+/** 会话中的一条消息（只含面向用户可见的 user/assistant 正文） */
+export interface AiMessage {
+  id: number
+  conversationId: string
+  role: 'user' | 'assistant'
+  content: string
+  createTime: string
+}
+
+/** `GET /ai/conversations/{id}/messages` 的返回体（标题 + 消息一次带回） */
+export interface AiConversationDetail {
+  conversation: AiConversation
+  messages: AiMessage[]
+}
+
+/** 确认卡片里的一行参数（键值都已转成字符串，避免模板里再做判空） */
+export interface ChatConfirmArg {
+  key: string
+  value: string
+}
+
+/**
+ * 聊天区渲染用的消息模型（前端本地态，不落库）。
+ *
+ * 与 {@link AiMessage} 的区别：后者是"已持久化的对话正文"，而这里还要承载**流式中间态**
+ * （token 增量、状态提示、确认卡片、错误），所以 type 比 role 更细。
+ */
+export interface ChatMsg {
+  role: 'user' | 'assistant' | 'system'
+  type: 'text' | 'token' | 'status' | 'error' | 'confirm'
+  content: string
+  /** 危险操作确认卡片携带的字段（type === 'confirm' 时有效） */
+  confirmId?: string
+  confirmTitle?: string
+  confirmArgs?: ChatConfirmArg[]
+  decided?: boolean
+  approved?: boolean
+  expired?: boolean
+}
+
+/**
+ * 后端 SSE 事件协议（与 AiChatService 发送的 Map 一一对应）。
+ *
+ * 集中定义可保证前后端语义一致，避免 `if (type === ...)` 的判断散落各处。
+ * `conversation` 是 M2 新增：**流的第一个事件**，用于把（可能是服务端兜底新建的）会话 id 告知前端。
+ */
+export type AgentSseEvent =
+  | { type: 'token'; content: string }
+  | { type: 'status'; content: string }
+  | { type: 'error'; content: string }
+  | { type: 'conversation'; conversationId: string }
+  | {
+      type: 'confirm'
+      confirmId: string
+      tool?: string
+      displayName?: string
+      args?: Record<string, unknown>
+      timeoutSeconds?: number
+    }
+  | { type: 'confirm_result'; confirmId: string; approved?: boolean; expired?: boolean }
+  | { type: 'done' }

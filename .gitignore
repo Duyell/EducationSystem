@@ -33,6 +33,7 @@ __screenshots__/
 .dsh/verify-p3-ui.diag.json
 .dsh/verify-p4-ui.diag.json
 .dsh/verify-warning-ui.diag.json
+.dsh/verify-m2-ui.diag.json
 # P5 评测的运行态产物：审计水位线（每次 -Mark 重写）与整次运行日志
 .dsh/p5-audit-watermark.txt
 .dsh/p5-eval-run.log

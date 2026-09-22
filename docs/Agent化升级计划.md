@@ -54,10 +54,12 @@
 
 > ### ⏸ 暂停状态（2026-09-22 第七轮 = M2 多轮会话落地，下次直接从这里开始）
 >
-> - **主线位置**：**M2 进行中**。1.2（接入 Spring AI）✅、**1.5 多轮记忆 ✅、1.6 会话 API ✅**（本轮完成，
->   含内存→MySQL 的记忆实现与归属校验）；**1.1（拆 `edu-agent` 模块）、1.7（前端会话侧栏）待做**。
+> - **主线位置**：**M2 进行中**。1.2（接入 Spring AI）✅、**1.5 多轮记忆 ✅、1.6 会话 API ✅、1.7 前端会话侧栏 ✅**；
+>   **仅剩 1.1（拆 `edu-agent` 模块）与 1.3/1.4（`@Tool` 声明式迁移）**。
 > - **代码状态**：会话/消息落 MySQL（`ai_conversation` + `ai_message`，迁移已执行）；
 >   `POST /ai/chat` 支持可选 `conversationId`（无 id 时服务端兜底新建，SSE 回传 `conversation` 事件）；
+>   AI 页已按 `vue-best-practices` 拆分（`index.vue` **752 → 324 行** + 3 个展示组件 + 2 个 composable），
+>   侧栏支持列表/新建/切换/删除、`?conversationId=` 回填历史、越权会话提示后回落；
 >   旧手写 `OpenAiClient`/`AiChatService` 仍是主链路（计划 1.4：保留一个版本周期作对照）。
 > - **本轮修掉两个"测试全绿、真机在错"的 bug（务必知道，都是断言缺口造成的）**：
 >   1. **同名工具跨角色互相覆盖**：学生与教师都有 `get_my_courses`，定义却存在一张全局 Map 里，
@@ -84,10 +86,9 @@
 >   2. **Spring AI 的传递依赖本地不全**（spring-retry / spring-webflux / micrometer-core…），
 >      联网拉一次；本机沙箱不许写 `~/.m2` → **一次性提权**跑同一条构建命令即可，之后 `mvn -o` 正常。
 > - **下一步（按顺序，可直接开工）**：
->   1. **前端会话侧栏**（计划 1.7）：左侧会话列表 + 新建 + 删除、`?conversationId=` 回填历史、
->      消费 SSE 的 `conversation` 事件；顺带按 `vue-best-practices` 拆 `views/ai/index.vue`（已 752 行）；
->   2. 挑 1~2 个工具改 `@Tool` 声明式，与手写注册对照（计划 1.4 的对照仍继续）；
->   3. 可选：拆分 `edu-agent` 模块（计划 1.1）；管理端"成绩变更日志"页面（接口已就绪）。
+>   1. 挑 1~2 个工具改 `@Tool` 声明式，与手写注册对照（计划 1.3/1.4 的对照仍继续）；
+>   2. 可选：拆分 `edu-agent` 模块（计划 1.1）；管理端"成绩变更日志"页面（接口已就绪）；
+>   3. 可选：`MessageBubble`/`ToolTrace`/`ConfirmCard` 再从 `ChatMessageList` 里细分，以及 1.9 断线重连。
 > - **动手前检查（本仓库踩过的，逐条照做）**：
 >   1. 先起 Redis + 后端；**用受管后台任务起服务**（`Start-Process` 起的会随命令结束被杀）；
 >      `Get-NetTCPConnection` 在本机沙箱里查不到监听端口 → 用 **`netstat -ano | findstr LISTENING`**；
@@ -95,11 +96,18 @@
 >   3. **改了接口/工具/Mapper 就要先 `mvn -o -B package -DskipTests` 再起后端**（只跑 test 不重打包 =
 >      拿旧 jar 测）→ 再 `node .dsh/verify-m2-conversations.cjs --no-llm`（会话链路，快）与
 >      `node .dsh/eval-p5-tools.cjs --inventory-only`（39 项）；
->   4. **`.ps1` 改完必须数非 ASCII 字节**（必须为 0）；
+>   4. **浏览器验证需要两次一次性提权**：`npm run dev`（Vite 的 `windowsSafeRealPathSync` 会
+>      `exec('net use')`）与 `node .dsh/verify-m2-ui.cjs`（Playwright 用**命名管道**做 CDP），
+>      在本机沙箱里都会 `spawn EPERM`——这是**沙箱边界，不是代码问题**，按规则一次性提权重跑同一条命令即可；
+>      前端 `npm run type-check`、`oxlint` 不需要提权；
+>   5. **脚本自己登录会顶掉 token**：界面登录会把 Redis 里 `token:<username>` 换成新值，
+>      之前用 API 拿的 token 立刻失效（症状：后续接口返回 `code=401`、`data=null`）。
+>      界面登录后要用 `page.evaluate(() => sessionStorage.getItem('token'))` 取**页面里那个** token；
+>   6. **`.ps1` 改完必须数非 ASCII 字节**（必须为 0）；
 >      多行/带引号的 `git commit -m` 会被 PowerShell 拆坏 → 用 `git commit -F <文件>`；
->   5. 跑评测核对审计表前先 `.\.dsh\verify-p5-audit.ps1 -Mark`；审计水位线本轮后为 **716** 左右（以脚本输出为准）。
-> - **本次工作记录**：`docs/开发记录.md` 第 **(十九)**（M2 多轮会话 + 两个 bug）、**(十八)**（M2 起步）、
->   **(十七)**（成绩变更日志）、**(十六)**（评教匿名/归属 + 成绩范围）等；简历口径见 `docs/简历项目描述.md`。
+>   7. 跑评测核对审计表前先 `.\.dsh\verify-p5-audit.ps1 -Mark`；审计水位线已推进到 **716**。
+> - **本次工作记录**：`docs/开发记录.md` 第 **(二十)**（前端会话侧栏 + 浏览器验证）、**(十九)**（M2 多轮会话
+>   + 两个 bug）、**(十八)**（M2 起步）等；简历口径见 `docs/简历项目描述.md`。
 > - **待作者确认的事项**：`docs/policies/README.md` 第三节——**8 项已全部收口，当前无待决事项**。
 > - **一个已知的、不影响使用的设计取舍**：`drop_course`（退课）目前是普通写操作、**不弹确认卡片**，
 >   而选课/录成绩/开课申请/审批都弹（已在 JW-02 5.5 如实写明）。若认为退课也该确认，一行就能改。
@@ -306,7 +314,7 @@ npm run build-only            # 沙箱下需提权：Vite 配置加载会 child_
 | **流式输出护栏**（P5 评测暴露） | 7B 模型偶发把工具调用**写成正文**流给用户（`{"name":...,"arguments":...}` 连 `</tool_call>`），操作没发生但屏幕上出现原始 JSON。评测已能识别该分类 | 是否作为 M2 前置小课题做掉：流式过程中识别并抑制"文本形态的工具调用"，同时把它当真正的调用继续走（仍过白名单/参数校验/确认卡片） |
 | `sendSse()` 既有缺陷 | 只捕获 `IOException`，客户端中途断开时 `IllegalStateException` 冒泡成误导日志。已核对非本次引入 | 是否现在修（修法简单：catch 一并捕获） |
 | 前端 `frontend/.vscode/` | 未跟踪（仓库根 `.gitignore` 只忽略了根目录的 `.vscode/*`） | 是否需要提交（通常不需要；也可补一条忽略规则） |
-| M2 拆分 `views/ai/index.vue` | 已达 752 行，按 `vue-best-practices` 的客观标准已构成 mega component | 是否在 M2 一并拆组件 |
+| M2 拆分 `views/ai/index.vue` | **✅ 已做（2026-09-22）：752 → 324 行**；拆出 `ConversationSidebar`/`ChatMessageList`/`ChatInput` + `useAgentChat`/`useConversations`（见第五节末的实际落地清单） | 已完成，无需拍板 |
 | 真实 LLM 验证 | 本地 Ollama `qwen2.5:7b` 已跑通 golden set 10/10；**云端大模型未测**（无 `AI_API_KEY`） | 是否提供云 Key 做一次对比（7B 的偶发失误正好可以用大模型对照） |
 | 培养计划示例数据 | `training_plan` 里那份是**示例**，且现有课程库只有 2 个学期 12 门课 | 是否需要我按真实教学计划补一份完整 4 年数据 |
 
@@ -636,6 +644,22 @@ views/ai/
 │   └── useConversations.ts   # 会话 CRUD
 └── types.ts                  # AgentEvent 联合类型（token|status|trace|confirm|citation|error|done）
 ```
+
+> **2026-09-22 实际落地的拆分**（1.7 已完成，与上面的草案略有出入，以实际为准）：
+> ```
+> views/ai/
+> ├── index.vue                        # 324 行（原 752）：只做编排——会话 id ↔ URL、流结束刷列表
+> └── components/
+>     ├── ConversationSidebar.vue      # 会话侧栏（草案里的 ConversationList）
+>     ├── ChatMessageList.vue          # 消息流 + 流式渲染 + 确认卡片 + 空态示例问题
+>     └── ChatInput.vue                # 输入区（Enter 发送 / Shift+Enter 换行）
+> composables/
+> ├── useAgentChat.ts                  # SSE 解析 + 事件分发 + 确认卡片生命周期
+> └── useConversations.ts              # 会话 CRUD + 历史消息
+> types/models.ts                      # 追加 AiConversation/AiMessage/AgentSseEvent 等
+> ```
+> 未按草案拆出的部分：`MessageBubble`/`ToolTrace`/`ConfirmCard` 目前并入 `ChatMessageList`；
+> `useAgentStream` 的断线重连归 1.9（流式健壮性）。
 
 关键约定：
 - **事件协议集中定义**（`types.ts`），前后端同一份语义，避免 `if (type === ...)` 散落。

@@ -1,205 +1,58 @@
-<template>
-  <div class="ai-chat-container">
-    <!-- Header -->
-    <div class="chat-header">
-      <div class="header-left">
-        <el-icon :size="22"><ChatDotSquare /></el-icon>
-        <span>AI 助手</span>
-      </div>
-      <div class="header-right">
-        <el-tag size="small" type="info" effect="plain" v-if="aiModel">
-          {{ aiModel }}
-        </el-tag>
-        <el-tag size="small" type="danger" effect="plain" v-else>
-          未配置
-        </el-tag>
-      </div>
-    </div>
-
-    <!-- Messages -->
-    <div class="chat-messages" ref="messagesRef">
-      <!-- Empty state -->
-      <div v-if="messages.length === 0" class="empty-state">
-        <el-icon :size="48" color="#999"><ChatLineSquare /></el-icon>
-        <p class="empty-title">有什么可以帮你的？</p>
-        <div class="example-prompts">
-          <el-tag
-            v-for="(prompt, i) in examplePrompts"
-            :key="i"
-            :class="{ 'is-admin': userRole === 'admin' }"
-            class="prompt-tag"
-            effect="plain"
-            @click="sendMessage(prompt)"
-          >
-            {{ prompt }}
-          </el-tag>
-        </div>
-      </div>
-
-      <!-- Message list -->
-      <div v-for="(msg, i) in messages" :key="i" class="message-row" :class="msg.role">
-        <div class="avatar-col">
-          <el-avatar v-if="msg.role === 'assistant'" :size="36" class="ai-avatar">
-            <el-icon :size="20"><ChatDotRound /></el-icon>
-          </el-avatar>
-          <el-avatar v-else-if="msg.role === 'user'" :size="36" class="user-avatar">
-            <el-icon :size="20"><User /></el-icon>
-          </el-avatar>
-        </div>
-        <div class="message-bubble" :class="msg.role">
-          <!-- Status messages -->
-          <div v-if="msg.type === 'status'" class="status-msg">
-            <el-icon class="status-icon"><Loading /></el-icon>
-            {{ msg.content }}
-          </div>
-          <!-- Token messages (streaming) -->
-          <div v-else-if="msg.type === 'token' || msg.type === 'text'" class="text-msg">
-            <div v-html="renderMarkdown(msg.content)"></div>
-          </div>
-          <!-- Error messages -->
-          <div v-else-if="msg.type === 'error'" class="error-msg">
-            <el-icon :size="16"><WarningFilled /></el-icon>
-            {{ msg.content }}
-          </div>
-          <!-- 危险操作确认卡片（HITL）：确认前工具不会执行 -->
-          <div v-else-if="msg.type === 'confirm'" class="confirm-card">
-            <div class="confirm-head">
-              <el-icon :size="16" color="#FA8C16"><WarningFilled /></el-icon>
-              <span class="confirm-title">需要你确认：{{ msg.confirmTitle }}</span>
-            </div>
-            <div v-if="msg.confirmArgs && msg.confirmArgs.length" class="confirm-args">
-              <div v-for="item in msg.confirmArgs" :key="item.key" class="confirm-arg">
-                <span class="arg-key">{{ item.key }}</span>
-                <span class="arg-value">{{ item.value }}</span>
-              </div>
-            </div>
-            <div class="confirm-foot">
-              <template v-if="!msg.decided">
-                <el-button size="small" type="primary" @click="handleConfirm(msg, true)">
-                  确认执行
-                </el-button>
-                <el-button size="small" @click="handleConfirm(msg, false)">取消</el-button>
-              </template>
-              <el-tag v-else-if="msg.approved === true" size="small" type="success" effect="plain">
-                已确认执行
-              </el-tag>
-              <el-tag v-else-if="msg.expired" size="small" type="warning" effect="plain">
-                已超时，操作未执行
-              </el-tag>
-              <el-tag v-else size="small" type="info" effect="plain">已取消</el-tag>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Loading indicator -->
-      <div v-if="loading" class="message-row assistant">
-        <div class="avatar-col">
-          <el-avatar :size="36" class="ai-avatar">
-            <el-icon :size="20"><ChatDotRound /></el-icon>
-          </el-avatar>
-        </div>
-        <div class="message-bubble assistant">
-          <div class="typing-indicator">
-            <span class="dot"></span>
-            <span class="dot"></span>
-            <span class="dot"></span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Input area -->
-    <div class="chat-input-area">
-      <el-input
-        v-model="inputText"
-        type="textarea"
-        :rows="2"
-        :disabled="loading"
-        :autosize="{ minRows: 2, maxRows: 4 }"
-        placeholder="输入你的问题，按 Enter 发送..."
-        @keydown.enter.prevent="handleSend"
-      />
-      <div class="input-actions">
-        <span class="hint">Enter 发送，Shift+Enter 换行</span>
-        <el-button
-          type="primary"
-          :disabled="!inputText.trim() || loading"
-          :loading="loading"
-          @click="handleSend"
-        >
-          发送
-        </el-button>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { ref, onMounted, nextTick, computed } from 'vue'
-import { ElMessage } from 'element-plus'
-import { ChatDotSquare, ChatLineSquare, ChatDotRound, User, Loading, WarningFilled } from '@element-plus/icons-vue'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ChatDotSquare } from '@element-plus/icons-vue'
 import request from '@/utils/request'
-
-// Configure marked for safe rendering
-const renderer = new marked.Renderer()
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-})
-
-type ConfirmArg = { key: string; value: string }
+import { useConversations } from '@/composables/useConversations'
+import { useAgentChat } from '@/composables/useAgentChat'
+import ConversationSidebar from './components/ConversationSidebar.vue'
+import ChatMessageList from './components/ChatMessageList.vue'
+import ChatInput from './components/ChatInput.vue'
+import type { AiConversation, ChatMsg } from '@/types/models'
 
 /**
- * 后端 SSE 事件协议（与 AiChatService 发送的 Map 一一对应）。
- * 集中定义可保证前后端语义一致，避免 `if (type === ...)` 的判断散落各处。
+ * AI 助手页（组合面）。
+ *
+ * 三层分工，刻意分开：
+ * - **会话数据**（列表/新建/删除/历史）→ `useConversations`；
+ * - **对话协议**（SSE 流式、确认卡片、消息状态）→ `useAgentChat`；
+ * - **本组件**：只做编排——把两者接起来（会话 id 同步 URL、流结束刷列表）并组合三个渲染组件。
+ *
+ * 视图里不再有 DOM 操作、不再解析 SSE 帧：那些分别归消息组件与对话 composable。
  */
-type AgentEvent =
-  | { type: 'token'; content: string }
-  | { type: 'status'; content: string }
-  | { type: 'error'; content: string }
-  | {
-      type: 'confirm'
-      confirmId: string
-      tool?: string
-      displayName?: string
-      args?: Record<string, unknown>
-      timeoutSeconds?: number
-    }
-  | { type: 'confirm_result'; confirmId: string; approved?: boolean; expired?: boolean }
-  | { type: 'done' }
 
-interface ChatMsg {
-  role: 'user' | 'assistant' | 'system'
-  type: 'text' | 'token' | 'status' | 'error' | 'confirm'
-  content: string
-  /** 危险操作确认卡片携带的字段（type === 'confirm' 时有效） */
-  confirmId?: string
-  confirmTitle?: string
-  confirmArgs?: ConfirmArg[]
-  decided?: boolean
-  approved?: boolean
-  expired?: boolean
-}
+const route = useRoute()
+const router = useRouter()
 
-const messages = ref<ChatMsg[]>([])
+const {
+  conversations,
+  activeId,
+  listLoading,
+  historyLoading,
+  loadList,
+  createConversation,
+  removeConversation,
+  openConversation,
+  startNewConversation,
+} = useConversations()
+
+const { messages, loading, send, confirm, resetMessages, replaceMessages } = useAgentChat({
+  // 服务端兜底新建会话后，把 id 落到 URL 与侧栏（刷新/分享才能回到同一个会话）
+  onConversation: (conversationId) => {
+    if (conversationId === activeId.value) return
+    activeId.value = conversationId
+    syncUrl(conversationId)
+  },
+  // 一轮结束就刷一次列表：标题由首条用户消息生成，只在本地拼标题会漏掉这个变化
+  onStreamEnd: () => loadList(),
+})
+
 const inputText = ref('')
-const loading = ref(false)
-const messagesRef = ref<HTMLElement | null>(null)
-const abortController = ref<AbortController | null>(null)
 const aiModel = ref('')
 const userRole = ref('')
-const currentAssistantMsg = ref<ChatMsg | null>(null)
-/** 当前等待用户决定的确认卡片（同一时刻只允许一个） */
-const pendingConfirm = ref<ChatMsg | null>(null)
 
-/** 从 catch 到的 unknown 中安全提取消息（规范要求禁止在 catch 中标注 any） */
-const errorMessage = (err: unknown): string =>
-  err instanceof Error ? err.message : String(err)
-
-const userInfo = computed(() => {
+const userInfo = computed<{ role?: string }>(() => {
   try {
     return JSON.parse(sessionStorage.getItem('user') || '{}')
   } catch {
@@ -218,233 +71,105 @@ const examplePrompts = computed(() => {
   }
 })
 
-const renderMarkdown = (content: string) => {
-  try {
-    const html = marked.parse(content, { async: false }) as string
-    // XSS 防护：AI 输出（可能含工具返回的学生名/课程名等）渲染前先消毒
-    return DOMPurify.sanitize(html)
-  } catch {
-    return content
+/** 把当前会话同步到 URL；空串表示"新对话"（不带参数） */
+const syncUrl = (conversationId: string) => {
+  const query = { ...route.query }
+  if (conversationId) {
+    query.conversationId = conversationId
+  } else {
+    delete query.conversationId
   }
+  // replace 而非 push：切会话不该在浏览器历史里堆一大串
+  void router.replace({ query })
 }
 
-const scrollToBottom = async () => {
-  await nextTick()
-  if (messagesRef.value) {
-    messagesRef.value.scrollTop = messagesRef.value.scrollHeight
-  }
+/** 示例问题：直接当作用户提问发出（输入框不经过，避免"点了没反应"的错觉） */
+const handlePickPrompt = (text: string) => {
+  if (loading.value) return
+  void send(text, activeId.value)
 }
 
 const handleSend = () => {
   if (!inputText.value.trim() || loading.value) return
-  sendMessage(inputText.value.trim())
+  const text = inputText.value.trim()
   inputText.value = ''
+  void send(text, activeId.value)
 }
 
-const sendMessage = async (text: string) => {
-  if (!text.trim()) return
+/** 正在回复时不允许切会话/新建：SSE 流与消息区是同一份状态，中途换会话会写错地方 */
+const blockWhileReplying = (): boolean => {
+  if (!loading.value) return false
+  ElMessage.info('正在回复中，请稍后再操作')
+  return true
+}
 
-  // Add user message
-  messages.value.push({
-    role: 'user',
-    type: 'text',
-    content: text,
-  })
-  scrollToBottom()
+/** 打开历史会话：把落库消息还原到聊天区 */
+const loadConversation = async (id: string) => {
+  const detail = await openConversation(id)
+  if (!detail) {
+    // 越权/不存在：服务端给的原因已由拦截器提示；这里补一句"接下来怎么办"并回落，别把用户卡在打不开的会话上
+    ElMessage.warning('会话不存在或无权访问，已切换到新对话')
+    startNewConversation()
+    resetMessages()
+    syncUrl('')
+    return
+  }
+  replaceMessages(
+    detail.messages
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map<ChatMsg>((m) => ({ role: m.role, type: 'text', content: m.content })),
+  )
+}
 
-  loading.value = true
-  currentAssistantMsg.value = null
+const handleSelectConversation = async (id: string) => {
+  if (id === activeId.value || blockWhileReplying()) return
+  activeId.value = id
+  syncUrl(id)
+  await loadConversation(id)
+}
 
-  // Create abort controller
-  abortController.value = new AbortController()
-  const token = sessionStorage.getItem('token')
+/** 新对话：真的建一个会话（POST /ai/conversations），这样刷新/URL 立刻可用 */
+const handleCreateConversation = async () => {
+  if (blockWhileReplying()) return
+  const created = await createConversation()
+  if (!created) {
+    ElMessage.error('新建会话失败，请稍后再试')
+    return
+  }
+  resetMessages()
+  syncUrl(created.id)
+}
 
+const handleRemoveConversation = async (conversation: AiConversation) => {
   try {
-    const response = await fetch('/api/ai/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'token': token || '',
-      },
-      body: JSON.stringify({ message: text }),
-      signal: abortController.value.signal,
-    })
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        ElMessage.error('登录已过期，请重新登录')
-        sessionStorage.removeItem('token')
-        sessionStorage.removeItem('user')
-        window.location.href = '/login'
-        return
-      }
-      throw new Error(`HTTP ${response.status}`)
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) throw new Error('No response body')
-
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || !trimmed.startsWith('data:')) continue
-
-        const dataStr = trimmed.slice(5).trim()
-        try {
-          const data = JSON.parse(dataStr)
-          handleSseEvent(data)
-        } catch {
-          // Skip malformed JSON
-        }
-      }
-    }
-
-    // Process remaining buffer
-    if (buffer.trim()) {
-      const trimmed = buffer.trim()
-      if (trimmed.startsWith('data:')) {
-        try {
-          const data = JSON.parse(trimmed.slice(5).trim())
-          handleSseEvent(data)
-        } catch {
-          // Skip
-        }
-      }
-    }
-
-  } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      messages.value.push({
-        role: 'assistant',
-        type: 'status',
-        content: '已取消',
-      })
-    } else {
-      messages.value.push({
-        role: 'assistant',
-        type: 'error',
-        content: '连接失败: ' + (errorMessage(err) || '未知错误'),
-      })
-    }
-  } finally {
-    loading.value = false
-    abortController.value = null
-    // 流意外中断时，未决的确认卡片不能继续可点（后端已放弃该操作）
-    expirePendingConfirm()
-    scrollToBottom()
+    await ElMessageBox.confirm(
+      `确定删除会话「${conversation.title || '新对话'}」吗？该会话的消息会一并删除。`,
+      '删除会话',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    // 用户取消：ElMessageBox 以 reject 结束，必须接住（本仓库踩过的坑）
+    return
+  }
+  // 先记住"删的是不是当前会话"：删除后 activeId 会被清空，事后再判断就晚了
+  const wasActive = conversation.id === activeId.value
+  const ok = await removeConversation(conversation.id)
+  if (!ok) return
+  if (wasActive) {
+    resetMessages()
+    syncUrl('')
   }
 }
 
-const handleSseEvent = (data: AgentEvent) => {
-  const type = data.type
-
-  switch (type) {
-    case 'token':
-      if (!currentAssistantMsg.value) {
-        currentAssistantMsg.value = {
-          role: 'assistant',
-          type: 'token',
-          content: '',
-        }
-        messages.value.push(currentAssistantMsg.value)
-      }
-      currentAssistantMsg.value.content += data.content
-      scrollToBottom()
-      break
-
-    case 'status':
-      // Status messages are not displayed
-      break
-
-    case 'error':
-      messages.value.push({
-        role: 'assistant',
-        type: 'error',
-        content: data.content,
-      })
-      scrollToBottom()
-      break
-
-    case 'confirm':
-      // 危险操作确认卡片：后端已挂起 Agent，等待用户在前端确认后才执行
-      pendingConfirm.value = {
-        role: 'assistant',
-        type: 'confirm',
-        content: '',
-        confirmId: data.confirmId,
-        confirmTitle: data.displayName || data.tool || '未知操作',
-        confirmArgs: Object.entries(data.args ?? {}).map(([key, value]) => ({
-          key,
-          value: value === null || value === undefined ? '' : String(value),
-        })),
-        decided: false,
-      }
-      messages.value.push(pendingConfirm.value)
-      scrollToBottom()
-      break
-
-    case 'confirm_result':
-      // 结果确认（取消/超时/其他端先行处理）
-      if (pendingConfirm.value && pendingConfirm.value.confirmId === data.confirmId) {
-        pendingConfirm.value.decided = true
-        pendingConfirm.value.approved = data.approved === true
-        pendingConfirm.value.expired = data.expired === true
-      }
-      break
-
-    case 'done':
-      // Convert the last token message to text type
-      if (currentAssistantMsg.value) {
-        currentAssistantMsg.value.type = 'text'
-      }
-      currentAssistantMsg.value = null
-      expirePendingConfirm()
-      scrollToBottom()
-      break
+/** 带 ?conversationId= 打开/刷新时恢复该会话 */
+const restoreFromUrl = async () => {
+  const queryId = typeof route.query.conversationId === 'string' ? route.query.conversationId : ''
+  if (!queryId) {
+    startNewConversation()
+    return
   }
-}
-
-/** 流结束/异常时收尾未决的确认卡片，避免留下点不动的可点按钮 */
-const expirePendingConfirm = () => {
-  if (pendingConfirm.value && !pendingConfirm.value.decided) {
-    pendingConfirm.value.decided = true
-    pendingConfirm.value.expired = true
-  }
-  pendingConfirm.value = null
-}
-
-/** 用户点击确认/取消，唤醒后端挂起的 Agent 线程 */
-const handleConfirm = async (msg: ChatMsg, approved: boolean) => {
-  if (!msg.confirmId || msg.decided) return
-  msg.decided = true
-  msg.approved = approved
-  // 卡片不再等待用户输入
-  if (pendingConfirm.value === msg) {
-    pendingConfirm.value = null
-  }
-  try {
-    await request.post('/api/ai/confirm', { confirmId: msg.confirmId, approved })
-    // 后端收到决定后会继续 SSE 流，后续回复由 handleSseEvent 处理
-  } catch (err: unknown) {
-    msg.decided = true
-    msg.approved = undefined
-    messages.value.push({
-      role: 'assistant',
-      type: 'error',
-      content: '确认失败：' + (errorMessage(err) || '该操作可能已失效，请重新发起'),
-    })
-    scrollToBottom()
-  }
+  activeId.value = queryId
+  await loadConversation(queryId)
 }
 
 /** GET /ai/config 的返回体（request.ts 拦截器已解包为 { code, msg, data }） */
@@ -457,23 +182,97 @@ onMounted(async () => {
   userRole.value = userInfo.value.role || 'student'
   try {
     const res = (await request.get('/api/ai/config')) as unknown as AiConfigResp
-    if (res.code === '200' && res.data) {
-      if (res.data.configured) {
-        aiModel.value = res.data.model || ''
-      } else {
-        aiModel.value = ''
-      }
-    }
+    aiModel.value = res.code === '200' && res.data?.configured ? res.data.model || '' : ''
   } catch {
     aiModel.value = ''
   }
+
+  await loadList()
+  await restoreFromUrl()
 })
+
+/**
+ * 浏览器前进/后退改变 URL 时同步会话。
+ * 自身 syncUrl 造成的变更会被 `id === activeId` 挡住，因此不会来回触发。
+ */
+watch(
+  () => route.query.conversationId,
+  async (value) => {
+    const id = typeof value === 'string' ? value : ''
+    if (!id) {
+      if (activeId.value) {
+        startNewConversation()
+        resetMessages()
+      }
+      return
+    }
+    if (id === activeId.value || loading.value) return
+    activeId.value = id
+    await loadConversation(id)
+  },
+)
 </script>
+
+<template>
+  <div class="ai-chat-container">
+    <ConversationSidebar
+      :conversations="conversations"
+      :active-id="activeId"
+      :loading="listLoading || historyLoading"
+      @select="handleSelectConversation"
+      @create="handleCreateConversation"
+      @remove="handleRemoveConversation"
+    />
+
+    <section class="chat-main">
+      <div class="chat-header">
+        <div class="header-left">
+          <el-icon :size="22">
+            <ChatDotSquare />
+          </el-icon>
+          <span>AI 助手</span>
+        </div>
+        <div class="header-right">
+          <el-tag
+            v-if="aiModel"
+            size="small"
+            type="info"
+            effect="plain"
+          >
+            {{ aiModel }}
+          </el-tag>
+          <el-tag
+            v-else
+            size="small"
+            type="danger"
+            effect="plain"
+          >
+            未配置
+          </el-tag>
+        </div>
+      </div>
+
+      <ChatMessageList
+        :messages="messages"
+        :loading="loading"
+        :example-prompts="examplePrompts"
+        :is-admin="userRole === 'admin'"
+        @confirm="confirm"
+        @pick-prompt="handlePickPrompt"
+      />
+
+      <ChatInput
+        v-model="inputText"
+        :loading="loading"
+        @send="handleSend"
+      />
+    </section>
+  </div>
+</template>
 
 <style scoped>
 .ai-chat-container {
   display: flex;
-  flex-direction: column;
   height: calc(100vh - 120px);
   background: #fff;
   border-radius: 8px;
@@ -481,7 +280,14 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-/* Header */
+/* 右侧主区：头部 + 消息 + 输入，纵向铺满 */
+.chat-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
 .chat-header {
   display: flex;
   align-items: center;
@@ -504,248 +310,14 @@ onMounted(async () => {
   gap: 8px;
 }
 
-/* Messages */
-.chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* Empty state */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  gap: 16px;
-  color: #999;
-}
-.empty-title {
-  font-size: 16px;
-  margin: 0;
-}
-.example-prompts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-  max-width: 400px;
-}
-.prompt-tag {
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.prompt-tag:hover {
-  transform: translateY(-1px);
-}
-.prompt-tag.is-admin {
-  /* admin tag style unchanged */
-}
-
-/* Message row */
-.message-row {
-  display: flex;
-  gap: 10px;
-  max-width: 85%;
-}
-.message-row.user {
-  align-self: flex-end;
-  flex-direction: row-reverse;
-}
-.message-row.assistant {
-  align-self: flex-start;
-}
-
-.avatar-col {
-  flex-shrink: 0;
-}
-.ai-avatar {
-  background: #165DFF;
-}
-.user-avatar {
-  background: #52c41a;
-}
-
-.message-bubble {
-  padding: 10px 14px;
-  border-radius: 8px;
-  line-height: 1.6;
-  font-size: 14px;
-  word-break: break-word;
-}
-.message-bubble.user {
-  background: #165DFF;
-  color: #fff;
-  border-bottom-right-radius: 2px;
-}
-.message-bubble.assistant {
-  background: #f5f7fa;
-  color: #333;
-  border-bottom-left-radius: 2px;
-}
-
-/* Status message */
-.status-msg {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #666;
-  font-size: 13px;
-}
-.status-icon {
-  animation: spin 1s linear infinite;
-}
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Error message */
-.error-msg {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #ff4d4f;
-}
-
-/* 危险操作确认卡片 */
-.confirm-card {
-  min-width: 260px;
-  padding: 12px 14px;
-  border: 1px solid #ffd591;
-  border-left: 3px solid #fa8c16;
-  border-radius: 6px;
-  background: #fffbf5;
-}
-.confirm-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #ad4e00;
-}
-.confirm-title {
-  line-height: 1.4;
-}
-.confirm-args {
-  margin: 10px 0 4px;
-  padding: 8px 10px;
-  border-radius: 4px;
-  background: #fff;
-  border: 1px solid #ffe7ba;
-  font-size: 13px;
-}
-.confirm-arg {
-  display: flex;
-  gap: 8px;
-  line-height: 1.8;
-}
-.arg-key {
-  flex-shrink: 0;
-  min-width: 76px;
-  color: #8c8c8c;
-}
-.arg-value {
-  color: #333;
-  word-break: break-all;
-}
-.confirm-foot {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-/* Text message */
-.text-msg {
-  white-space: pre-wrap;
-}
-.text-msg :deep(p) {
-  margin: 0 0 8px;
-}
-.text-msg :deep(p:last-child) {
-  margin-bottom: 0;
-}
-.text-msg :deep(ul),
-.text-msg :deep(ol) {
-  padding-left: 20px;
-  margin: 4px 0;
-}
-.text-msg :deep(code) {
-  background: rgba(0, 0, 0, 0.06);
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 13px;
-}
-.text-msg :deep(pre) {
-  background: #1e1e1e;
-  color: #d4d4d4;
-  padding: 12px;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 8px 0;
-}
-.text-msg :deep(pre code) {
-  background: none;
-  color: inherit;
-  padding: 0;
-}
-.text-msg :deep(table) {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 8px 0;
-  font-size: 13px;
-}
-.text-msg :deep(th),
-.text-msg :deep(td) {
-  border: 1px solid #ddd;
-  padding: 6px 10px;
-  text-align: left;
-}
-.text-msg :deep(th) {
-  background: #f0f0f0;
-  font-weight: 600;
-}
-
-/* Typing indicator */
-.typing-indicator {
-  display: flex;
-  gap: 4px;
-  padding: 4px 0;
-}
-.dot {
-  width: 8px;
-  height: 8px;
-  background: #999;
-  border-radius: 50%;
-  animation: bounce 1.4s ease-in-out infinite;
-}
-.dot:nth-child(2) { animation-delay: 0.2s; }
-.dot:nth-child(3) { animation-delay: 0.4s; }
-@keyframes bounce {
-  0%, 80%, 100% { transform: translateY(0); }
-  40% { transform: translateY(-8px); }
-}
-
-/* Input area */
-.chat-input-area {
-  padding: 12px 20px 16px;
-  border-top: 1px solid #eee;
-  background: #fafafa;
-}
-.input-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 8px;
-}
-.hint {
-  font-size: 12px;
-  color: #999;
+/* 窄屏：改为上下堆叠，避免侧栏把消息区挤没（技能里移动端塌陷的裁剪版） */
+@media (max-width: 900px) {
+  .ai-chat-container {
+    flex-direction: column;
+    height: auto;
+  }
+  .chat-main {
+    min-height: 60vh;
+  }
 }
 </style>
