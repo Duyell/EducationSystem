@@ -6,13 +6,13 @@ import duyell.mapper.*;
 import duyell.service.CourseApplyService;
 import duyell.service.CourseService;
 import duyell.service.ScheduleService;
+import duyell.service.ScoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
 import utils.BusinessException;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.*;
 
 @Component
@@ -28,6 +28,7 @@ public class TeacherToolRegistrar implements InitializingBean {
     private final CourseService courseService;
     private final CourseApplyService courseApplyService;
     private final ScheduleService scheduleService;
+    private final ScoreService scoreService;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -96,10 +97,6 @@ public class TeacherToolRegistrar implements InitializingBean {
                     BigDecimal examScore = args.containsKey("examScore")
                             ? BigDecimal.valueOf(Double.parseDouble(args.get("examScore").toString()))
                             : BigDecimal.ZERO;
-                    // total = usualScore * 0.4 + examScore * 0.6
-                    BigDecimal total = usualScore.multiply(BigDecimal.valueOf(0.4))
-                            .add(examScore.multiply(BigDecimal.valueOf(0.6)))
-                            .setScale(1, RoundingMode.HALF_UP);
 
                     // 检查是否已存在成绩
                     Score existing = scoreMapper.select(courseId, Integer.valueOf(studentId));
@@ -107,14 +104,18 @@ public class TeacherToolRegistrar implements InitializingBean {
                         return "{\"message\":\"该学生此课程已有成绩记录，请使用 update_score 修改\"}";
                     }
 
+                    // ⚠️ 交给 ScoreService，而不是直接 scoreMapper.add：
+                    // 总成绩权重、精度（3 位小数）与 passed 派生字段都只有那一处实现。
+                    // 曾经这里自己算总分（setScale(1)）且不写 passed，结果是——
+                    // ① 同一份成绩走助手与走界面得到不同总分；② passed 为 NULL 使
+                    // 「已修过」选课校验漏判，学生录完成绩还能重复选同一门课。
                     Score score = new Score();
                     score.setCourseId(courseId);
                     score.setStudentId(studentId);
                     score.setUsualScore(usualScore);
                     score.setExamScore(examScore);
-                    score.setTotalScore(total);
-                    scoreMapper.add(score);
-                    return "{\"message\":\"成绩录入成功\",\"totalScore\":" + total + "}";
+                    scoreService.add(score);
+                    return "{\"message\":\"成绩录入成功\",\"totalScore\":" + score.getTotalScore() + "}";
                 }
         ));
 
@@ -135,7 +136,7 @@ public class TeacherToolRegistrar implements InitializingBean {
                 (args, userId, role) -> {
                     Integer id = Integer.valueOf(args.get("id").toString());
 
-                    Score existing = scoreMapper.selectById(id);
+                    Score existing = scoreService.selectById(id);
                     if (existing == null) {
                         return "{\"error\":\"成绩记录不存在\"}";
                     }
@@ -144,26 +145,20 @@ public class TeacherToolRegistrar implements InitializingBean {
                         return "{\"error\":\"无权限修改该成绩\"}";
                     }
 
-                    // 合并更新：只传平时成绩时保留原考试成绩，避免被清零
-                    BigDecimal usual = existing.getUsualScore() != null ? existing.getUsualScore() : BigDecimal.ZERO;
-                    BigDecimal exam = existing.getExamScore() != null ? existing.getExamScore() : BigDecimal.ZERO;
+                    // 只传要改的那一项：ScoreService.update 会先合并库中原值再重算，
+                    // 因此另一项不会被清零，passed 也会随之重算（同样只有一处实现）。
+                    Score patch = new Score();
+                    patch.setId(id);
                     if (args.containsKey("usualScore")) {
-                        usual = BigDecimal.valueOf(Double.parseDouble(args.get("usualScore").toString()));
+                        patch.setUsualScore(BigDecimal.valueOf(Double.parseDouble(args.get("usualScore").toString())));
                     }
                     if (args.containsKey("examScore")) {
-                        exam = BigDecimal.valueOf(Double.parseDouble(args.get("examScore").toString()));
+                        patch.setExamScore(BigDecimal.valueOf(Double.parseDouble(args.get("examScore").toString())));
                     }
-                    BigDecimal total = usual.multiply(BigDecimal.valueOf(0.4))
-                            .add(exam.multiply(BigDecimal.valueOf(0.6)))
-                            .setScale(1, RoundingMode.HALF_UP);
+                    scoreService.update(patch);
 
-                    Score score = new Score();
-                    score.setId(id);
-                    score.setUsualScore(usual);
-                    score.setExamScore(exam);
-                    score.setTotalScore(total);
-                    scoreMapper.update(score);
-                    return "{\"message\":\"成绩修改成功\",\"totalScore\":" + total + "}";
+                    Score updated = scoreService.selectById(id);
+                    return "{\"message\":\"成绩修改成功\",\"totalScore\":" + updated.getTotalScore() + "}";
                 }
         ));
 

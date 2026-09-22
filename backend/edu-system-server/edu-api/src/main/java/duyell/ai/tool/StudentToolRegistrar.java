@@ -176,15 +176,15 @@ public class StudentToolRegistrar implements InitializingBean {
 
         registry.register("student", new ToolDefinition(
                 "evaluate_teacher", "教学评价",
-                "对某门课程的教师进行教学评价（提交后不可修改）。"
+                "对某门课程的教师进行教学评价（**5 星制**，1~5 分；提交后不可修改）。"
                         + "content 省略时只提交评分、不附文字评价。",
                 Map.of(
                         "type", "object",
                         "properties", Map.of(
                                 "courseId", Map.of("type", "integer", "description", "课程ID"),
                                 "teacherId", Map.of("type", "string", "description", "教师工号"),
-                                "score", Map.of("type", "integer", "minimum", 1, "maximum", 100,
-                                        "description", "评分(1-100)"),
+                                "score", Map.of("type", "integer", "minimum", 1, "maximum", 5,
+                                        "description", "评分（5 星制，1~5 的整数）"),
                                 "content", Map.of("type", "string", "description", "评价内容；省略则不附文字评价")
                         ),
                         "required", List.of("courseId", "teacherId", "score")
