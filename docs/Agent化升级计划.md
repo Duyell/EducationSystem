@@ -55,8 +55,8 @@
 > ### ⏸ 暂停状态（2026-09-22 第七轮 = M2 多轮会话落地，下次直接从这里开始）
 >
 > - **主线位置**：**M2 进行中**。1.2（接入 Spring AI）✅、**1.5 多轮记忆 ✅、1.6 会话 API ✅、1.7 前端会话侧栏 ✅**、
->   **1.3 工具声明式迁移 🟡 已迁 3 个（学生 `get_my_courses`/`select_course` + 教师 `get_my_courses`，覆盖只读/危险写/同名跨角色）**；
->   **剩 1.1（拆 `edu-agent` 模块）、1.3 的批量迁移、1.4（框架循环）**。
+>   **1.3 工具声明式迁移 🟡 已迁 3 个**、**1.4 Agent 循环 🟡 编排抽离完成（方案 B）**；
+>   **剩 1.1（拆 `edu-agent` 模块）、1.3 的批量迁移、1.9（断线重连）**。
 > - **代码状态**：会话/消息落 MySQL（`ai_conversation` + `ai_message`，迁移已执行）；
 >   `POST /ai/chat` 支持可选 `conversationId`（无 id 时服务端兜底新建，SSE 回传 `conversation` 事件）；
 >   AI 页已按 `vue-best-practices` 拆分（`index.vue` **752 → 324 行** + 3 个展示组件 + 2 个 composable），
@@ -93,14 +93,13 @@
 >      每迁一批跑 `node .dsh/eval-p5-tools.cjs --only=<迁移的工具>` 对照选路，
 >      并核对 `/ai/tools` 里该工具的参数 **Schema 形状**与手写版一致
 >      （见开发记录 (二十一) 坑 ②：描述可以写得更好，形状不能变）；
->   2. **1.4 框架循环**：先把事件契约（token/status/confirm/confirm_result/conversation/error/done）固定成枚举，
->      再决定用框架 tool-calling 还是自写 `AgentRuntime` 只保留编排；
+>   2. ~~1.4 事件契约与编排抽离~~（已完成，见开发记录 (二十二)）；
 >   3. 可选：拆分 `edu-agent` 模块（1.1）；管理端"成绩变更日志"页面（接口已就绪）；
 >      1.9 断线重连；把 `MessageBubble`/`ToolTrace`/`ConfirmCard` 从 `ChatMessageList` 里细分。
 > - **动手前检查（本仓库踩过的，逐条照做）**：
 >   1. 先起 Redis + 后端；**用受管后台任务起服务**（`Start-Process` 起的会随命令结束被杀）；
 >      `Get-NetTCPConnection` 在本机沙箱里查不到监听端口 → 用 **`netstat -ano | findstr LISTENING`**；
->   2. `mvn -o -B test -pl edu-api -am` 应 **215 项**全绿（188 + M2 新增 27）；
+>   2. `mvn -o -B test -pl edu-api -am` 应 **220 项**全绿（188 + M2 新增 32）；
 >   3. **改了接口/工具/Mapper 就要先 `mvn -o -B package -DskipTests` 再起后端**（只跑 test 不重打包 =
 >      拿旧 jar 测）→ 再 `node .dsh/verify-m2-conversations.cjs --no-llm`（会话链路，快）与
 >      `node .dsh/eval-p5-tools.cjs --inventory-only`（39 项）；
@@ -114,7 +113,7 @@
 >   6. **`.ps1` 改完必须数非 ASCII 字节**（必须为 0）；
 >      多行/带引号的 `git commit -m` 会被 PowerShell 拆坏 → 用 `git commit -F <文件>`；
 >   7. 跑评测核对审计表前先 `.\.dsh\verify-p5-audit.ps1 -Mark`；审计水位线已推进到 **716**。
-> - **本次工作记录**：`docs/开发记录.md` 第 **(二十一)**（工具声明式迁移试点）、**(二十)**（前端会话侧栏 +
+> - **本次工作记录**：`docs/开发记录.md` 第 **(二十二)**（AgentRuntime + 事件契约）、**(二十一)**（工具声明式迁移）、**(二十)**（前端会话侧栏 +
 >   浏览器验证）、**(十九)**（M2 多轮会话 + 两个 bug）、**(十八)**（M2 起步）等；简历口径见 `docs/简历项目描述.md`。
 > - **待作者确认的事项**：`docs/policies/README.md` 第三节——**8 项已全部收口，当前无待决事项**。
 > - **一个已知的、不影响使用的设计取舍**：`drop_course`（退课）目前是普通写操作、**不弹确认卡片**，
@@ -510,7 +509,7 @@ npm run build-only            # 沙箱下需提权：Vite 配置加载会 child_
 | 1.2 接入 Spring AI | `spring-ai-bom` + `spring-ai-starter-model-openai` 指向 DeepSeek；`ChatClient` Bean 统一构建；保留 `OpenAiClient` 一个版本周期作为回归对照，之后删除 | `AgentConfig` |
 | 1.3 工具改造 | 21 个工具由 Lambda 改为**声明式 `@Tool` 方法**（`description` 写清"何时用/何时不用"），按角色拆成工具类：`StudentTools/TeacherTools/AdminTools`；入参用 record/DTO 让框架自动生成 JSON Schema | `tool/*.java` |
 | 1.3 工具改造 | **🟡 试点+第二批完成（2026-09-22）**：`get_my_courses`（学生 READ_ONLY / 教师 READ_ONLY，**同名跨角色**）、`select_course`（DANGEROUS，弹确认卡片）已迁为声明式（`@Tool` + 项目侧 `@ToolMeta` 补展示名/风险等级），手写实现保留作对照（`registerOverride` 接管）；批量只需新增一个 `DeclarativeToolGroup` Bean。**其余 28 个待批量迁移**。⚠️ 迁移踩到的两个坑见开发记录 (二十一)：`MethodToolCallback.Builder` 不会从注解推导定义；单个对象参数会被框架**再套一层参数名**（静默改变模型要填的形状） | `tool/declarative/` |
-| 1.4 Agent 循环 | 用框架的 tool-calling 循环（或自写 `AgentRuntime` 只保留编排：迭代上限、超时、取消、事件回调）；`SseEmitter` 抽象为 `AgentEventPublisher`，事件类型枚举化。**尚未开始**：现有手写循环在 M2 里又长出了多轮记忆与 `conversation` 事件，迁移前先把事件契约固定下来 | `AgentRuntime`、`AgentEvent` |
+| 1.4 Agent 循环 | **🟡 编排抽离完成（2026-09-22，用户拍板方案 B）**：`AgentRuntime`（模型↔工具往复 + 四道闸门 + 输出护栏）+ `AgentEventPublisher`/`AgentEventType`（事件契约固定成枚举，生产走 SSE、测试用记录实现）；`AiChatService` 756 → 372 行，只剩 token/限流/会话/传输；助手正文落库从三处收敛为一处。**未换成框架 tool-calling 循环**：确认卡片要挂起线程、护栏要过滤输出、审计要留痕，重写成 Advisor 风险高于收益。**剩**：`AgentEventPublisher` 抽象出 `AgentEvent` 联合类型文档、断线重连（1.9） | `runtime/` |
 | 1.5 多轮记忆 | **✅ 已完成（2026-09-22）**：`ChatMemory` + **MySQL** 持久化（`ai_conversation`/`ai_message`）；窗口＝"取最近 N 条"（`ai.memory.max-messages`，默认 20）。⚠️ **未用**框架的 `MessageWindowChatMemory`：其 `saveAll` 是"替换整个会话"语义，落 MySQL 要么丢历史、要么消息翻倍（理由见开发记录 (十九)）；摘要压缩**暂不做**（7B 下性价比低，待上下文真正吃紧再加） | `MybatisChatMemory`、`ConversationService` |
 | 1.6 会话管理 API | **✅ 已完成（2026-09-22）**：`POST/GET /ai/conversations`、`GET /ai/conversations/{id}/messages`、`DELETE /ai/conversations/{id}`；`POST /ai/chat` 支持可选 `conversationId` + SSE 回传 `conversation` 事件；归属校验单一入口 `requireOwned`（改 id 只会得到"不存在或无权访问"）；role 只认 token。**重命名接口暂未做**（标题由首条消息自动生成，够用） | `AgentConversationController` |
 | 1.7 前端会话侧栏 | 左侧会话列表 + 新建 + 删除；`?conversationId=` 路由参数；历史消息回填（后端已就绪，见 1.6） | `views/ai/` 拆分组件 |
@@ -727,3 +726,4 @@ views/ai/
 3. **建评测数据的骨架**：先把现有 21 个工具各写 2～3 条 golden 用例（哪怕先只有 40 条），后面每阶段都用它做回归。
 
 > 落地时按现有惯例：改动同步写入 `docs/开发记录.md` 顶部；新增数据库变更放 `docs/sql/` 并在 `edujwxt.sql` 同步。
+

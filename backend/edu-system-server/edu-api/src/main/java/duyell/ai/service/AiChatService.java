@@ -1,21 +1,16 @@
 package duyell.ai.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.duyell.AiConversation;
-import com.duyell.AiToolAudit;
-import duyell.ai.audit.AiAuditService;
-import duyell.ai.audit.AuditStatus;
 import duyell.ai.config.AiProperties;
 import duyell.ai.confirm.ConfirmationGate;
 import duyell.ai.confirm.PendingAction;
 import duyell.ai.confirm.PendingActionStore;
 import duyell.ai.dto.ChatMessage;
 import duyell.ai.limit.AgentRateLimiter;
-import duyell.ai.tool.ToolArgumentValidator;
-import duyell.ai.guard.ToolCallTextGuard;
-import duyell.ai.tool.ToolDefinition;
-import duyell.ai.tool.ToolExecutionResult;
-import duyell.ai.tool.ToolRegistry;
+import duyell.ai.runtime.AgentEvent;
+import duyell.ai.runtime.AgentEventPublisher;
+import duyell.ai.runtime.AgentRuntime;
+import duyell.ai.runtime.SseAgentEventPublisher;
 import duyell.service.ConversationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,23 +26,32 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * AI 对话的**接入层**：HTTP/SSE、身份、限流、会话。
+ *
+ * <p>M2 计划 1.4 之后它的职责边界是：
+ * <ul>
+ *   <li><b>本类</b>：token 解析 → 限流 → 会话（归属校验/兜底新建/历史窗口/落库）→ SSE 传输 → 确认接口；</li>
+ *   <li><b>{@link AgentRuntime}</b>：模型↔工具的往复、四道闸门（白名单/参数校验/人工确认/审计）、输出护栏；</li>
+ *   <li><b>{@link AgentEventPublisher}</b>：事件出口（生产走 SSE，测试用记录实现直接断言事件序列）。</li>
+ * </ul>
+ * 之所以保留自写循环而不是换成框架的 tool-calling 循环：本项目要在工具执行**前**挂起等人确认、
+ * 在输出**后**过滤模型写成正文的工具调用、并把每次调用落审计表——这三件事是 M1 的闸门，
+ * 换成框架循环就得把它们重写成 Advisor，风险高于收益（详见 {@link AgentRuntime} 类注释）。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiChatService {
 
-    private final OpenAiClient openAiClient;
-    private final ToolRegistry toolRegistry;
     private final JwtUtil jwtUtil;
     private final AiProperties aiProperties;
     private final PendingActionStore pendingActionStore;
     private final ConfirmationGate confirmationGate;
-    private final AiAuditService auditService;
-    private final ToolArgumentValidator toolArgumentValidator;
     private final AgentRateLimiter rateLimiter;
-    private final ObjectMapper objectMapper;
     private final ConversationService conversationService;
     private final ChatMemory chatMemory;
+    private final AgentRuntime agentRuntime;
 
     private static final long SSE_TIMEOUT = 5 * 60 * 1000L; // 5 minutes
 
@@ -241,8 +245,21 @@ public class AiChatService {
         return emitter;
     }
 
+    /**
+     * 跑一轮对话：**只做会话与传输**，模型↔工具的往复交给 {@code AgentRuntime}。
+     *
+     * <p>本方法剩下三件事：
+     * <ol>
+     *   <li>挑系统提示词（按角色）；</li>
+     *   <li>确定会话（归属校验/兜底新建）→ 发 conversation 事件 → 读历史窗口 → 落库本轮用户消息；</li>
+     *   <li>调 {@code AgentRuntime#run} 跑循环，结束后**统一落库助手正文**。</li>
+     * </ol>
+     * 第 3 步的"统一落库"是这次重构顺带修掉的一处隐患：改造前三条结束路径
+     * （正常结束 / 用户取消 / 达到迭代上限）各自调用一次落库，漏一处就会少记一轮对话。现在只有一处。
+     */
     private void processChat(String message, String userId, String role, String requestedConversationId,
                              SseEmitter emitter, String[] awaitingConfirmId) throws Exception {
+        AgentEventPublisher events = new SseAgentEventPublisher(emitter);
 
         // Select system prompt by role
         String systemPrompt = switch (role) {
@@ -251,298 +268,34 @@ public class AiChatService {
             default -> SYSTEM_PROMPT_STUDENT;
         };
 
-        // ① 先确定会话（归属校验 / 兜底新建）。失败时按 SSE 错误收尾，不进入模型调用：
+        // ① 先确定会话（归属校验 / 兜底新建）。失败时按错误收尾，不进入模型调用：
         //    绝不能"降级成无记忆对话"继续跑——那等于用一个错误会话 id 悄悄读别人的上下文。
-        AiConversation conversation = resolveConversation(requestedConversationId, userId, role, emitter);
+        AiConversation conversation = resolveConversation(requestedConversationId, userId, role, events);
         if (conversation == null) {
             return;     // 已回复错误并 complete
         }
-        sendSse(emitter, "message", Map.of(
-                "type", "conversation", "conversationId", conversation.getId()));
+        events.publish(AgentEvent.conversation(conversation.getId()));
 
-        // Build initial messages
-        List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.builder().role("system").content(systemPrompt).build());
         // ② 历史窗口：**先读历史，再写入本轮用户消息**。反过来的话本轮消息会被读一次、
         //    又被当成"用户输入"追加一次，模型会看到两遍同一句话。
-        messages.addAll(historyMessages(conversation.getId()));
-        messages.add(ChatMessage.builder().role("user").content(message).build());
-
+        List<ChatMessage> history = historyMessages(conversation.getId());
         // 落库本轮用户消息（首条消息顺带生成会话标题）
         conversationService.appendUserMessage(conversation.getId(), message);
 
-        // ③ 本轮模型输出的**可见正文**（供多轮记忆）。
-        //    只收集真正发给用户的文本：被输出护栏扣下的原始工具调用 JSON 不进记忆，
-        //    否则下一轮模型会把自己上次的畸形输出当成"我说过的话"再学一遍。
-        StringBuilder answerText = new StringBuilder();
+        // ③ 委托运行时跑循环。**连接级状态由本方法持有**：当前挂起的确认令牌交给
+        //    onTimeout/onError/onCompletion 使用，浏览器断开时立刻释放等待（不必耗满确认超时）。
+        AgentRuntime.Outcome outcome = agentRuntime.run(
+                new AgentRuntime.Request(userId, role, systemPrompt, history, message,
+                        confirmId -> awaitingConfirmId[0] = confirmId),
+                events);
 
-        // Get tools for this role
-        List<ToolDefinition> tools = toolRegistry.getToolsByRole(role);
-        List<Map<String, Object>> toolsPayload = tools.isEmpty() ? null
-                : toolRegistry.toToolsPayload(tools);
-
-        // Tool-calling loop
-        // 工具调用轮数上限改为可配置（原硬编码 10）
-        int maxIterations = Math.max(1, aiProperties.getLimits().getMaxIterations());
-        int maxToolCalls = aiProperties.getLimits().getMaxToolCallsPerChat();
-        int toolCallsUsed = 0;
-
-        for (int iteration = 0; iteration < maxIterations; iteration++) {
-            boolean[] toolCallsReceived = {false};
-            List<ChatMessage.ToolCall> currentToolCalls = new ArrayList<>();
-            String[] currentReasoningContent = {null};
-
-            // 输出护栏：小模型偶尔把工具调用**写成正文**（实测 qwen2.5:7b 会输出
-            // `{"name": "...", "arguments": {...}}`）。它一边挡住这段原始 JSON 不展示给用户，
-            // 一边把调用恢复出来，下面按**正常工具调用**继续走（白名单 / Schema 校验 / 确认卡片 / 审计全都不变）。
-            ToolCallTextGuard guard = new ToolCallTextGuard(objectMapper);
-
-            openAiClient.streamChat(
-                    messages,
-                    toolsPayload,
-                    // onToken - forward to frontend
-                    token -> {
-                        // 护栏可能扣住一部分内容（怀疑是工具调用），只把确认安全的文本发出去
-                        String safe = guard.feed(token);
-                        if (safe.isEmpty()) {
-                            return;
-                        }
-                        answerText.append(safe);
-                        try {
-                            emitter.send(SseEmitter.event()
-                                    .name("message")
-                                    .data(Map.of("type", "token", "content", safe)));
-                        } catch (IOException e) {
-                            log.warn("Failed to send token to SSE", e);
-                        }
-                    },
-                    // onToolCalls - tool calls from AI
-                    toolCalls -> {
-                        toolCallsReceived[0] = true;
-                        currentToolCalls.addAll(toolCalls);
-                    },
-                    // onReasoningContent - reasoning from thinking models
-                    reasoning -> currentReasoningContent[0] = reasoning,
-                    // onDone - stream complete
-                    () -> {
-                        // No-op, handled after streamChat returns
-                    },
-                    // onError
-                    error -> {
-                        try {
-                            emitter.send(SseEmitter.event()
-                                    .name("message")
-                                    .data(Map.of("type", "error", "content", error)));
-                            emitter.complete();
-                        } catch (IOException e) {
-                            log.warn("Failed to send error to SSE", e);
-                        }
-                    }
-            );
-
-            if (!toolCallsReceived[0]) {
-                ToolCallTextGuard.Result recovered = guard.finish();
-                if (recovered.calls().isEmpty()) {
-                    // 正常结束：把护栏扣住的普通文本补发出去（不能吞掉回答）
-                    if (!recovered.trailingText().isEmpty()) {
-                        answerText.append(recovered.trailingText());
-                        sendSse(emitter, "message", Map.of("type", "token", "content", recovered.trailingText()));
-                    }
-                    conversationService.appendAssistantMessage(conversation.getId(), answerText.toString());
-                    sendSse(emitter, "done", Map.of("type", "done"));
-                    emitter.complete();
-                    return;
-                }
-
-                // 模型把工具调用写成了正文 → 恢复成真实调用继续走
-                log.warn("模型把工具调用写成了正文，已恢复为真实调用: user={}, count={}, tools={}",
-                        userId, recovered.calls().size(),
-                        recovered.calls().stream().map(ToolCallTextGuard.RecoveredCall::name).toList());
-                sendSse(emitter, "message", Map.of(
-                        "type", "status",
-                        "content", "🔧 已识别模型以文本形式输出的工具调用，正在按正常流程处理"));
-                int index = 0;
-                for (ToolCallTextGuard.RecoveredCall call : recovered.calls()) {
-                    currentToolCalls.add(ChatMessage.ToolCall.builder()
-                            .id("recovered-" + UUID.randomUUID())
-                            .type("function")
-                            .index(index++)
-                            .function(ChatMessage.ToolCall.Function.builder()
-                                    .name(call.name())
-                                    .arguments(call.arguments())
-                                    .build())
-                            .build());
-                }
-            }
-
-            // Add assistant message with tool calls
-            ChatMessage assistantMsg = ChatMessage.builder()
-                    .role("assistant")
-                    .content(null)
-                    .reasoningContent(currentReasoningContent[0])
-                    .toolCalls(currentToolCalls)
-                    .build();
-            messages.add(assistantMsg);
-
-            // Execute each tool call
-            for (ChatMessage.ToolCall tc : currentToolCalls) {
-                String toolName = tc.getFunction().getName();
-
-                // ①'' 单次对话工具调用总量闸门（阶段 0.8）：防止模型在同一轮内狂调工具
-                if (maxToolCalls > 0 && toolCallsUsed >= maxToolCalls) {
-                    log.warn("单次对话工具调用数超限，提前结束: user={}, limit={}, used={}",
-                            userId, maxToolCalls, toolCallsUsed);
-                    sendSse(emitter, "message", Map.of(
-                            "type", "status",
-                            "content", "⚠️ 单次对话工具调用次数已达上限，已停止继续执行"));
-                    break;
-                }
-                toolCallsUsed++;
-                String rawArgs = tc.getFunction().getArguments();
-
-                // ① 角色白名单校验：模型给出的工具名不可信，越权/未知工具直接拒绝
-                if (!toolRegistry.isAllowedForRole(role, toolName)) {
-                    log.warn("拦截越权工具调用: role={}, user={}, tool={}", role, userId, toolName);
-                    // 越权尝试是安全事件，必须留痕（这往往是最需要回溯的一类记录）
-                    auditService.record(userId, role, toolName, unknownRiskLevel(toolName),
-                            parseArguments(rawArgs), null, AuditStatus.DENIED,
-                            "角色 " + role + " 无权调用该工具或工具不存在", null, null);
-                    // tool 字段带上原始工具名：越权尝试往往需要被前端/评测脚本精确识别，
-                    // 只给一段中文文案是没法机器判断的。
-                    sendSse(emitter, "message", Map.of(
-                            "type", "error",
-                            "tool", toolName,
-                            "content", "已拦截越权工具调用: " + toolName
-                    ));
-                    messages.add(ChatMessage.builder()
-                            .role("tool")
-                            .toolCallId(tc.getId())
-                            .name(toolName)
-                            .content("{\"error\":\"TOOL_NOT_ALLOWED\","
-                                    + "\"message\":\"当前角色不可调用该工具，请勿重试\"}")
-                            .build());
-                    continue;
-                }
-
-                // 定义必须按角色取：同名工具在不同角色下可能是**两份不同实现**
-                // （例如 get_my_courses 对学生是"我选的课"、对教师是"我教的课"），
-                // 按名全局查找会执行到另一个角色的实现（见 ToolRegistry 类注释）
-                ToolDefinition toolDef = toolRegistry.getTool(role, toolName);
-                Map<String, Object> parsedArgs = parseArguments(rawArgs);
-
-                // ①' 参数 Schema 校验：参数不合法就不该进入确认流程、更不该执行。
-                // 把可读原因回灌给模型，让它自己改对参数重试（而不是抛异常或落库脏数据）。
-                ToolArgumentValidator.Result validation =
-                        toolArgumentValidator.validate(toolDef.parameters(), parsedArgs);
-                if (!validation.valid()) {
-                    log.info("工具参数校验未通过: tool={}, user={}, reason={}",
-                            toolName, userId, validation.errorMessage());
-                    auditService.record(userId, role, toolName, toolDef.riskLevel().name(),
-                            parsedArgs, null, AuditStatus.INVALID_ARGUMENTS,
-                            validation.errorMessage(), null, null);
-                    sendSse(emitter, "message", Map.of(
-                            "type", "status",
-                            "tool", toolName,
-                            "displayName", displayName(toolDef),
-                            "riskLevel", toolDef.riskLevel().name(),
-                            "content", "⚠️ 参数不完整: " + displayName(toolDef)
-                    ));
-                    messages.add(ChatMessage.builder()
-                            .role("tool")
-                            .toolCallId(tc.getId())
-                            .name(toolName)
-                            .content(objectMapper.writeValueAsString(Map.of(
-                                    "error", "INVALID_ARGUMENTS",
-                                    "message", validation.errorMessage(),
-                                    "hint", "请根据上述问题修正参数后重新调用该工具")))
-                            .build());
-                    continue;
-                }
-
-                String result = null;
-
-                // ② 危险操作必须经用户显式确认（HITL），不能只靠提示词约束
-                if (toolDef.requiresConfirmation()
-                        && aiProperties.getConfirmation().isEnabled()) {
-                    sendSse(emitter, "message", Map.of(
-                            "type", "status",
-                            "tool", toolName,
-                            "displayName", displayName(toolDef),
-                            "riskLevel", toolDef.riskLevel().name(),
-                            "content", "⏸ 等待确认: " + displayName(toolDef)
-                    ));
-
-                    ConfirmationOutcome outcome =
-                            awaitConfirmation(emitter, toolDef, parsedArgs, userId, role, awaitingConfirmId);
-                    result = outcome.result();
-
-                    // 用户取消/超时/连接断开后，工具调用链已无法继续（缺少 tool 结果会导致
-                    // 后续请求被模型服务拒绝），因此直接收尾本次对话，让用户重新发起。
-                    if (!outcome.approved()) {
-                        // 用户拒绝/超时同样是审计要点：证明「未执行」是主动决策而非系统故障。
-                        // 结果未写库，故不记 result_json，只记拒绝原因。
-                        auditService.record(userId, role, toolName, toolDef.riskLevel().name(),
-                                parsedArgs, null, AuditStatus.REJECTED_BY_USER,
-                                "用户取消或确认超时，工具未执行", outcome.confirmId(), null);
-                        // 已说出口的正文仍要入记忆：下一轮追问时模型才知道自己刚才说过什么。
-                        // 而"已取消"是系统文案、不是模型输出，不入记忆（否则会被模型当成自己的话复述）。
-                        conversationService.appendAssistantMessage(conversation.getId(), answerText.toString());
-                        sendSse(emitter, "message", Map.of("type", "status",
-                                "content", "本次操作已取消，未对数据做任何修改"));
-                        sendSse(emitter, "done", Map.of("type", "done"));
-                        emitter.complete();
-                        return;
-                    }
-                }
-
-                if (result == null) {
-                    // 带 tool/riskLevel：SSE 是调用方唯一能实时看到的「模型到底选了哪个工具」的
-                    // 信号，此前只有一段中文文案，前端和评测脚本都只能靠猜。
-                    sendSse(emitter, "message", Map.of(
-                            "type", "status",
-                            "tool", toolName,
-                            "displayName", displayName(toolDef),
-                            "riskLevel", toolDef.riskLevel().name(),
-                            "content", "🔄 正在执行: " + displayName(toolDef)
-                    ));
-                    // ③ 统一执行入口：执行前已校验角色，异常信息脱敏后回灌模型
-                    ToolExecutionResult exec = toolRegistry.executeForRole(toolDef, role, parsedArgs, userId);
-                    result = exec.payload();
-                    boolean failed = exec.status() == ToolExecutionResult.Status.FAILED;
-                    if (failed) {
-                        log.error("工具执行失败: tool={}, user={}, args={}, detail={}",
-                                toolName, userId, parsedArgs, exec.errorDetail());
-                    } else {
-                        log.info("工具调用: tool={}, role={}, user={}, status={}, durationMs={}",
-                                toolName, role, userId, exec.status(), exec.durationMs());
-                    }
-                    auditService.record(userId, role, toolName, toolDef.riskLevel().name(),
-                            parsedArgs, result,
-                            failed ? AuditStatus.FAILED : AuditStatus.SUCCESS,
-                            exec.errorDetail(), null, exec.durationMs());
-                }
-
-                // Add tool result message
-                messages.add(ChatMessage.builder()
-                        .role("tool")
-                        .toolCallId(tc.getId())
-                        .name(toolName)
-                        .content(result)
-                        .build());
-            }
-
-            // Clear tools payload for subsequent iterations (tools already defined)
-            // Actually keep tools for follow-up calls so AI can call them again if needed
+        if (outcome.answerText() != null && !outcome.answerText().isBlank()) {
+            conversationService.appendAssistantMessage(conversation.getId(), outcome.answerText());
+        } else {
+            // 本轮没有可见正文（例如模型只调了工具）：不留空消息，否则历史里全是空轮次
+            log.debug("本轮无可见正文，不落库助手消息: conversation={}, stopReason={}",
+                    conversation.getId(), outcome.stopReason());
         }
-
-        // Max iterations reached
-        conversationService.appendAssistantMessage(conversation.getId(), answerText.toString());
-        sendSse(emitter, "message", Map.of(
-                "type", "status",
-                "content", "⚠️ 已达到最大迭代次数，部分操作可能未完成"
-        ));
-        sendSse(emitter, "done", Map.of("type", "done"));
-        emitter.complete();
     }
 
     /**
@@ -557,10 +310,10 @@ public class AiChatService {
      *       是明确的越权风险，宁可让用户新建会话。</li>
      * </ul>
      *
-     * @return 可用会话；失败时已向 SSE 发送错误并完成响应，返回 {@code null}
+     * @return 可用会话；失败时已向调用方发送错误并完成响应，返回 {@code null}
      */
     private AiConversation resolveConversation(String requestedConversationId, String userId, String role,
-                                               SseEmitter emitter) {
+                                               AgentEventPublisher events) {
         try {
             if (requestedConversationId == null || requestedConversationId.isBlank()) {
                 return conversationService.create(userId, role, null);
@@ -575,9 +328,9 @@ public class AiChatService {
         } catch (BusinessException e) {
             // 会话不可用时**不降级**为无记忆对话：那等于用一个错误 id 继续跑，
             // 用户会以为自己在接着上文说，实际上下文已经丢了。
-            sendSse(emitter, "message", Map.of("type", "error", "content", e.getMessage()));
-            sendSse(emitter, "done", Map.of("type", "done"));
-            emitter.complete();
+            events.publish(AgentEvent.error(e.getMessage()));
+            events.publish(AgentEvent.done());
+            events.complete();
             return null;
         }
     }
@@ -615,142 +368,5 @@ public class AiChatService {
         log.debug("会话历史: conversation={}, 窗口内 {} 条, 可用 {} 条",
                 conversationId, history.size(), converted.size());
         return converted;
-    }
-
-    /**
-     * 挂起等待用户确认危险操作。
-     *
-     * @return 用户确认时返回工具执行结果；取消/超时/失效时返回 null
-     */
-    /**
-     * 危险操作确认结果。
-     *
-     * <p>显式带上 {@code confirmId}：它在方法内部会从「当前挂起」状态清除，
-     * 而审计需要把它写进 confirm_id 列，所以必须随返回值带出，
-     * 不能依赖调用方去读已被清空的挂起标记。
-     *
-     * @param approved 是否获批执行
-     * @param confirmId 本次确认令牌
-     * @param result 获批时的工具执行结果；未获批为 null
-     */
-    private record ConfirmationOutcome(boolean approved, String confirmId, String result) {
-    }
-
-    private ConfirmationOutcome awaitConfirmation(SseEmitter emitter, ToolDefinition toolDef,
-                                                  Map<String, Object> args, String userId, String role,
-                                                  String[] awaitingConfirmId)
-            throws IOException {
-        int timeoutSeconds = aiProperties.getConfirmation().getTimeoutSeconds();
-        String confirmId = UUID.randomUUID().toString();
-        PendingAction action = new PendingAction(confirmId, userId, role, toolDef.name(),
-                displayName(toolDef), args, toolDef.riskLevel(), System.currentTimeMillis());
-        pendingActionStore.save(action, Duration.ofSeconds(timeoutSeconds));
-        awaitingConfirmId[0] = confirmId;
-
-        sendSse(emitter, "message", Map.of(
-                "type", "confirm",
-                "confirmId", confirmId,
-                "tool", toolDef.name(),
-                "displayName", displayName(toolDef),
-                "args", args,
-                "timeoutSeconds", timeoutSeconds
-        ));
-
-        ConfirmationGate.DecisionResult decision =
-                confirmationGate.awaitDecision(confirmId, Duration.ofSeconds(timeoutSeconds));
-        pendingActionStore.remove(confirmId);
-        awaitingConfirmId[0] = null;
-
-        switch (decision) {
-            case APPROVED -> {
-                sendSse(emitter, "message", Map.of(
-                        "type", "confirm_result", "confirmId", confirmId, "approved", true));
-
-                // 幂等保护（阶段 0.6）：以确认令牌作为幂等键。
-                // 同一个 confirmId 若已经成功执行过，直接复用既有结果，绝不重复写库。
-                // 正常路径下 ConfirmationGate 与 PendingActionStore 已能挡住重复确认，
-                // 这里是数据库层的最后一道防线（例如同一令牌被并发提交）。
-                AiToolAudit alreadyDone = auditService.findExecuted(confirmId);
-                if (alreadyDone != null) {
-                    log.info("幂等命中，跳过重复执行: tool={}, user={}, confirmId={}",
-                            toolDef.name(), userId, confirmId);
-                    sendSse(emitter, "message", Map.of(
-                            "type", "status",
-                            "content", "该操作此前已执行过，本次未重复执行"));
-                    return new ConfirmationOutcome(true, confirmId, alreadyDone.getResultJson());
-                }
-
-                log.info("用户已确认危险操作: tool={}, user={}, args={}", toolDef.name(), userId, args);
-                ToolExecutionResult exec = toolRegistry.executeForRole(toolDef, role, args, userId);
-                boolean failed = exec.status() == ToolExecutionResult.Status.FAILED;
-                if (failed) {
-                    log.error("工具执行失败: tool={}, user={}, args={}, detail={}",
-                            toolDef.name(), userId, args, exec.errorDetail());
-                } else {
-                    log.info("工具调用: tool={}, role={}, user={}, status={}, durationMs={}",
-                            toolDef.name(), role, userId, exec.status(), exec.durationMs());
-                }
-                // 经人工确认后执行的写操作，是审计中最需要回溯的一类：记全 confirmId 与幂等键
-                auditService.record(userId, role, toolDef.name(), toolDef.riskLevel().name(),
-                        args, exec.payload(),
-                        failed ? AuditStatus.FAILED : AuditStatus.SUCCESS,
-                        exec.errorDetail(), confirmId, exec.durationMs(), confirmId);
-                return new ConfirmationOutcome(true, confirmId, exec.payload());
-            }
-            case REJECTED -> {
-                sendSse(emitter, "message", Map.of(
-                        "type", "confirm_result", "confirmId", confirmId, "approved", false));
-                log.info("用户取消危险操作: tool={}, user={}", toolDef.name(), userId);
-                return new ConfirmationOutcome(false, confirmId, null);
-            }
-            default -> {
-                sendSse(emitter, "message", Map.of(
-                        "type", "confirm_result", "confirmId", confirmId,
-                        "approved", false, "expired", true));
-                sendSse(emitter, "message", Map.of(
-                        "type", "status",
-                        "content", "⚠️ 确认已超时，操作未执行"));
-                log.info("危险操作确认超时: tool={}, user={}", toolDef.name(), userId);
-                return new ConfirmationOutcome(false, confirmId, null);
-            }
-        }
-    }
-
-    /** 解析模型给出的工具参数；解析失败返回空 Map，由工具自身报参数缺失 */
-    private Map<String, Object> parseArguments(String rawArgs) {
-        if (rawArgs == null || rawArgs.isBlank()) {
-            return Map.of();
-        }
-        try {
-            return objectMapper.readValue(rawArgs,
-                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
-                    });
-        } catch (Exception e) {
-            log.warn("工具参数解析失败: {}", rawArgs, e);
-            return Map.of();
-        }
-    }
-
-    /**
-     * 越权/未知工具的风险等级。
-     *
-     * <p>刻意不返回该工具的真实等级：调用者本就无权使用它，
-     * 泄露其是否存在、属于哪个等级都是不必要的权限信息外泄。
-     */
-    private String unknownRiskLevel(String toolName) {
-        return "UNKNOWN";
-    }
-
-    private String displayName(ToolDefinition toolDef) {
-        return toolDef.displayName() != null && !toolDef.displayName().isBlank()
-                ? toolDef.displayName() : toolDef.name();
-    }
-
-    private void sendSse(SseEmitter emitter, String eventName, Object data) {
-        try {
-            emitter.send(SseEmitter.event().name(eventName).data(data));
-        } catch (IOException e) {
-            log.warn("Failed to send SSE event: {}", eventName, e);
-        }
     }
 }

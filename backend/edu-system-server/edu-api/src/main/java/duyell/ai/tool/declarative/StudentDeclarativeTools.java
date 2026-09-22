@@ -104,8 +104,8 @@ public class StudentDeclarativeTools implements DeclarativeToolGroup {
      */
     @Tool(name = "select_course",
             description = "为**当前登录学生本人**选一门课。"
-                    + "学生明确说\"我要选某门课\"\"帮我选上XX课\"且已经知道课程ID时使用。"
-                    + "选课会写入数据，因此系统会先弹出确认卡片，用户确认后才真正执行。"
+                    + "学生明确说\"我要选某门课\"\"帮我选上XX课\"且已经知道课程ID时，**直接调用本工具**："
+                    + "写入前的确认由系统弹出的确认卡片负责，你不需要在文字里再问一次\"是否确认\"。"
                     + "如果学生还没确定选哪门课，请先用 get_course_list 给出可选课程，不要凭空猜 courseId。")
     @ToolMeta(displayName = "选课", riskLevel = RiskLevel.DANGEROUS)
     public String selectCourse(

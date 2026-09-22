@@ -607,7 +607,30 @@ public String selectCourse(
   **单个对象参数会被框架再套一层参数名**（`{"request":{"courseId":...}}`），与平铺契约不一致——
   故试点使用平铺的 `@ToolParam` 形参。详见 `docs/开发记录.md`（二十一）。
 
-### 8.6 记忆里放什么
+### 8.6 Agent 运行时与事件契约（1.4，方案 B）
+
+编排从 `AiChatService` 抽到 `AgentRuntime`，事件出口抽成 `AgentEventPublisher`：
+
+```
+AiChatService（接入层）   token 解析 → 限流 → 会话（归属/历史/落库）→ SSE 传输 → 确认接口
+        │  委托
+AgentRuntime（编排层）    模型↔工具往复 + 四道闸门（白名单/参数校验/人工确认/审计）+ 输出护栏
+        │  事件
+AgentEventPublisher      生产：SseAgentEventPublisher（推浏览器）；测试：记录型实现（直接断言序列）
+```
+
+事件类型固定成枚举 `AgentEventType`：`token / status / conversation / confirm / confirm_result / error / done`；
+`AgentEvent.toPayload()` **只放非 null 字段**，`type` 用枚举名小写——与改造前的线协议逐字一致
+（前端 `useAgentChat`、评测与验证脚本都按这些键判断）。
+
+- `AgentRuntime.Outcome(answerText, stopReason)`：`stopReason` ∈ `completed / cancelled / max-iterations`；
+  助手正文**由调用方统一落库**（改造前三条结束路径各写一遍，漏一处就少记一轮对话）。
+- 连接级状态（当前挂起的确认令牌）由 `AiChatService` 持有：浏览器断开时
+  `onTimeout/onError/onCompletion` 立刻释放等待，不必耗满确认超时（通过 `Request.onConfirmPending` 回调）。
+- 换框架循环的取舍见 `AgentRuntime` 类注释：确认卡片要挂起线程、护栏要过滤输出、审计要留痕，
+  重写成 Advisor 的收益不如风险。
+
+### 8.7 记忆里放什么
 
 - 只放 `user` / `assistant` 的**可见正文**；
 - 被输出护栏扣下的原始工具调用 JSON **不进记忆**——否则模型会把自己上一轮的畸形输出当成"我说过的话"再学一遍
