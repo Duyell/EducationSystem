@@ -1,0 +1,31 @@
+feat(agent): M2 起步——Spring AI 1.0.9 接入打通（离线可用）+ 迁移前基线 + 护栏补漏
+
+M2（框架化迁移）第一步：把框架接进来并证明真能调通，**不动**现有手写循环（计划 1.4 要求旧实现保留作对照）。
+
+接入
+- 父 pom 引入 spring-ai-bom:1.0.9（与 Spring Boot 3.5 兼容，本机 m2 已有）
+- edu-api 引入 spring-ai-starter-model-ollama + spring-ai-client-chat + chat-memory 自动配置
+- application.yml 增加 spring.ai.ollama.*（与既有 ai.* 并存：前者驱动框架，后者驱动手写 OpenAiClient）
+- AgentConfig：ChatClient Bean（刻意不设默认 system prompt——分角色提示词由调用方传）
+- 实测结果：ChatModel=OllamaChatModel、ChatMemory=MessageWindowChatMemory 均由框架自动配置；
+  SpringAiWiringTest 2 项（默认只验 Bean；真实调用用 -Dai.live=true 显式打开，已手工跑通"收到"）
+
+两个环境坑（已解决，写入接续指南）
+1) 离线构建认领不了本地 Spring AI 制品：本机 m2 中这批制品来源 id 是 aliyun-maven（镜像），
+   Maven -o 模式要求来源 id 在当前仓库列表里，否则报 "spring-ai-bom:pom:1.0.9 (present, but unavailable)"。
+   修法：父 pom 显式声明同 id 仓库（未改 Maven 全局配置、未改本地仓库文件）。
+2) Spring AI 的传递依赖本地不全（spring-retry/spring-webflux/micrometer-core…），需联网拉一次；
+   沙箱不许写 ~/.m2（FileNotFoundException 拒绝访问）→ 一次性提权跑同一构建命令，之后 mvn -o 正常。
+
+护栏补漏（由基线评测当场发现）
+- 模型这次没吐完整块，而是吐了**没有配对的 </tool_call>** 加字符残渣（"imonial"），
+  原护栏只处理完整块与裸 JSON，落单标签漏给了用户 → 评测断言变红
+- 修法：stripStrayTags 清掉落单的 <tool_call> / </tool_call>（收尾段同样处理）；补 2 条单测
+
+迁移前基线（已存档，供迁移后对照）
+- 评测：PASS=75 FAIL=0，ROUTING 10/10（工具面 student=17 teacher=7 admin=9）
+- 后端测试：188 项全绿（+2 落单标签）
+- 注：7B 模型选路本身有波动（同套用例出现过 10/10 与 8/10），迁移后需多次跑再下结论
+- 审计水位线重置为 675（下次核对只覆盖之后的运行）
+
+文档：开发记录（十八）、计划第五节与接续指南暂停状态（M2 进度 + 两个环境坑 + 下一步四项）

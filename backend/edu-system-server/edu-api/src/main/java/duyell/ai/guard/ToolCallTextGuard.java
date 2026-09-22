@@ -96,7 +96,8 @@ public final class ToolCallTextGuard {
     /** 流结束：把剩下的部分处理干净 */
     public synchronized Result finish() {
         String flushed = drain();
-        String trailing = pending.toString();
+        // 收尾这段也要清掉落单的协议标签（它同样会被送往用户界面）
+        String trailing = stripStrayTags(pending.toString());
         pending.setLength(0);
 
         String cleanText;
@@ -105,7 +106,7 @@ public final class ToolCallTextGuard {
             emitted.append(trailing);
             cleanText = emitted.toString();
         } else {
-            // 有调用 → 这段文本（通常是 "bral" 之类的噪声）不再展示；历史里也不放原始 JSON
+            // 有调用 → 这段文本（通常是 "bral"/"imonial" 之类的噪声）不再展示；历史里也不放原始 JSON
             cleanText = emitted.toString();
             trailing = "";
         }
@@ -131,7 +132,7 @@ public final class ToolCallTextGuard {
             int open = pending.indexOf(TAG_OPEN);
             int close = pending.indexOf(TAG_CLOSE);
             if (open >= 0 && close > open) {
-                out.append(pending, 0, open);
+                out.append(stripStrayTags(pending.substring(0, open)));
                 String block = pending.substring(open + TAG_OPEN.length(), close);
                 pending.delete(0, close + TAG_CLOSE.length());
                 if (!recover(block)) {
@@ -147,7 +148,7 @@ public final class ToolCallTextGuard {
                 if (start.confirmed()) {
                     int end = findJsonEnd(pending, start.index());
                     if (end >= 0) {
-                        out.append(pending, 0, start.index());
+                        out.append(stripStrayTags(pending.substring(0, start.index())));
                         String json = pending.substring(start.index(), end + 1);
                         pending.delete(0, end + 1);
                         if (!recover(json)) {
@@ -163,7 +164,7 @@ public final class ToolCallTextGuard {
                 if (tagPrefix >= 0 && tagPrefix < holdFrom) {
                     holdFrom = tagPrefix;
                 }
-                out.append(pending, 0, holdFrom);
+                out.append(stripStrayTags(pending.substring(0, holdFrom)));
                 pending.delete(0, holdFrom);
                 break;
             }
@@ -171,10 +172,10 @@ public final class ToolCallTextGuard {
             // ③ 没有 JSON 起点：只需扣住"可能是半个 <tool_call> 标签"的尾巴
             int hold = partialTagIndex(pending);
             if (hold >= 0) {
-                out.append(pending, 0, hold);
+                out.append(stripStrayTags(pending.substring(0, hold)));
                 pending.delete(0, hold);
             } else {
-                out.append(pending);
+                out.append(stripStrayTags(pending.toString()));
                 pending.setLength(0);
             }
             break;
@@ -185,6 +186,26 @@ public final class ToolCallTextGuard {
 
     /** JSON 对象的可能起点 */
     private record JsonStart(int index, boolean confirmed) {
+    }
+
+    /**
+     * 去掉**孤立的** {@code <tool_call>} / {@code </tool_call>} 标签。
+     *
+     * <p>为什么要单独处理：实测（2026-09-22 迁移前跑评测基线）出现过模型只吐了一个
+     * **没有配对的 {@code </tool_call>}**、外加几个字符残渣的情况，例如：
+     * <pre>
+     * imonial
+     * &lt;/tool_call&gt;您的当前平均学分绩点是 3.8834…
+     * </pre>
+     * 完整块（有开有闭）由 ① 分支处理；这种**落单的标签**属于模型协议残渣，
+     * 展示给学生没有任何意义，所以从要发出去的文本里直接删掉。
+     * （评测里那条"回答正文不允许出现工具调用 JSON"的链路不变量就是被它咬红的。）
+     */
+    private static String stripStrayTags(String text) {
+        if (text == null || text.isEmpty() || text.indexOf('<') < 0) {
+            return text == null ? "" : text;
+        }
+        return text.replace(TAG_OPEN, "").replace(TAG_CLOSE, "");
     }
 
     /**

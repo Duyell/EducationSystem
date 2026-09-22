@@ -95,6 +95,23 @@
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-jackson</artifactId>
         </dependency>
+
+        <!-- Spring AI（M2 框架化迁移）
+             先只接模型与记忆：Ollama starter（本机 11434，无需云 Key）+ ChatClient + ChatMemory。
+             ⚠️ 手写的 OpenAiClient / AiChatService 循环**暂不删除**，留作回归对照（见计划 1.4 注意事项）。
+             版本由父 pom 的 spring-ai-bom 统一管理（${spring-ai.version}，本机仓库已有 1.0.9）。 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-ollama</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-client-chat</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-autoconfigure-model-chat-memory</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

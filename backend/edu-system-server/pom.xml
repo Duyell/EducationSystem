@@ -20,6 +20,31 @@
     </modules>
     <packaging>pom</packaging>
 
+    <!--
+      离线构建所需的仓库声明（**不是**为了下载）。
+
+      背景：本机 m2 仓库里的 Spring AI 制品是由镜像 `aliyun-maven` 下载的，其
+      `_remote.repositories` 记录了来源 id。Maven 在 `-o`（离线）模式会校验"制品来源 id 是否在
+      当前构建的仓库列表里"，不匹配就报
+      `spring-ai-bom:pom:1.0.9 (present, but unavailable)` —— **明明在本地却不让用**。
+      这里显式声明同 id 的仓库（也就是这台机器 settings.xml 里用的阿里云镜像），
+      让离线构建能认领本地已有制品；联网时它同样可用。
+      ⚠️ 换镜像后要同步改这里的 id/url，否则离线构建会再次报上面的错。
+    -->
+    <repositories>
+        <repository>
+            <id>aliyun-maven</id>
+            <name>Aliyun public mirror (same id as this machine's settings.xml)</name>
+            <url>https://maven.aliyun.com/repository/public</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
 
     <properties>
         <java.version>21</java.version>
@@ -28,9 +53,21 @@
         <spring-boot.version>3.5.16</spring-boot.version>
         <mysql.version>9.7.0</mysql.version>
         <jwt.version>0.13.0</jwt.version>
+        <!-- M2 框架化迁移：Spring AI。用本机 m2 仓库里已有的 1.0.9（与 Spring Boot 3.5 兼容），
+             这样离线（mvn -o）也能构建；升级前先确认目标版本已在本机仓库里 -->
+        <spring-ai.version>1.0.9</spring-ai.version>
     </properties>
     <dependencyManagement>
         <dependencies>
+            <!-- Spring AI BOM：统一管理 spring-ai-* 的版本 -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-starter-actuator</artifactId>

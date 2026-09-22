@@ -163,4 +163,39 @@ class ToolCallTextGuardTest {
         assertTrue(visible.length() >= big.length(), "超大缓冲必须放行");
         assertTrue(guard.finish().calls().isEmpty());
     }
+
+    /**
+     * 落单的 {@code </tool_call>} 标签也不能流给用户。
+     *
+     * <p>这条来自**真实运行**：迁移前跑评测基线时，模型一边被护栏拦下了 JSON（已恢复成调用），
+     * 一边又吐了一个**没有配对的闭合标签**加几个字符残渣，正文长这样：
+     * <pre>
+     * imonial
+     * &lt;/tool_call&gt;您的当前平均学分绩点是 3.8834…
+     * </pre>
+     * 评测里"回答正文不允许出现工具调用 JSON"的链路不变量当场变红。
+     * 完整块由 ① 分支处理，落单标签必须另行清掉。
+     */
+    @Test
+    void dropsStrayClosingTagWithoutOpening() {
+        ToolCallTextGuard guard = new ToolCallTextGuard(mapper);
+        String raw = "imonial\n</tool_call>您的当前平均学分绩点是 3.8834。";
+
+        String visible = guard.feed(raw) + guard.finish().trailingText();
+
+        assertTrue(visible.indexOf("tool_call") < 0, "落单标签不该出现：" + visible);
+        assertTrue(visible.contains("3.8834"), "正文必须保留：" + visible);
+    }
+
+    /** 落单的开标签同理（模型只写了 <tool_call> 就断了） */
+    @Test
+    void dropsStrayOpeningTagWithoutClosing() {
+        ToolCallTextGuard guard = new ToolCallTextGuard(mapper);
+        String raw = "结果如下 <tool_call> 但没有后续内容";
+
+        String visible = guard.feed(raw) + guard.finish().trailingText();
+
+        assertTrue(visible.indexOf("tool_call") < 0, "落单标签不该出现：" + visible);
+        assertTrue(visible.contains("结果如下"), "正文必须保留：" + visible);
+    }
 }

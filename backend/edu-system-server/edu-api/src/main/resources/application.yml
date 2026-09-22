@@ -17,6 +17,19 @@ spring:
           max-idle: 8
           min-idle: 0
           max-wait: -1ms
+  ai:
+    # ---------- M2 框架化迁移：Spring AI（先接本机 Ollama） ----------
+    # 注意这是**两套**配置：
+    #   ai.*              驱动**手写**的 OpenAiClient（保留作回归对照，暂不删除）
+    #   spring.ai.ollama.* 驱动 **Spring AI** 的 OllamaChatModel
+    # 两者可并存、互不干扰，便于迁移期逐条对照行为差异。
+    ollama:
+      # Ollama 原生端点不带 /v1（/v1 是它提供的 OpenAI 兼容端点）
+      base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        options:
+          model: ${AI_MODEL:qwen2.5:7b}
+          temperature: ${AI_TEMPERATURE:0.7}
 
 
 mybatis:

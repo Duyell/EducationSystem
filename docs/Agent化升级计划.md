@@ -51,40 +51,44 @@
 > 并已产出 **M3 的 RAG 语料（`docs/policies/` 10 份制度文件）**，全部推送 `origin/main`。
 > 下一步：**① 输出护栏（小）→ ② M2 框架化迁移（Spring AI + 多轮记忆）**。
 
-> ### ⏸ 暂停状态（2026-09-22 第五轮，下次直接从这里开始）
+> ### ⏸ 暂停状态（2026-09-22 第六轮 = M2 起步，下次直接从这里开始）
 >
-> - **代码状态**：教务扩展 P5 + 政策文档 + 学业预警 + **输出护栏（本轮新增）** 均已提交推送，`main` = 见 `git log`。
->   工作区除 `frontend/.vscode/`（未跟踪，待你决定是否提交）外干净。
-> - **服务状态**：**Redis / 后端 8080 都在跑**（本轮做了真实模型回归）；前端 5173 这轮没用到。
->   ⚠️ **DSH 宿主崩溃会带走这些后台任务**（本轮发生过两次），重开时按第 1 节重新起。
-> - **本轮新增交付（输出护栏，计划里的 B 线已收口）**：
->   `duyell.ai.guard.ToolCallTextGuard` 接进 `AiChatService`：模型把工具调用**写成正文**时，
->   扣住原始 JSON 不展示，并把它**恢复成真实工具调用继续走**（白名单 / 参数校验 / 确认卡片 / 审计全照旧，
->   **不新增任何权限**）。验证：9 项单测 + **1 项接线层集成测试**（继承 `OpenAiClient` 的桩，必现"坏模型"，
->   断言恢复出的调用**落审计且 SUCCESS**）+ 评测对每个用例断言"正文不出现工具调用 JSON"；
->   真实模型回归 `--only=get_my_gpa,check_time_conflict` → PASS=45 FAIL=0。详见开发记录 **(十五)**。
-> - **审计状态**：`docs/policies/` 的 **JW-01、JW-06 已审完并修订**（v1.2 / v1.1），JW-02~05、JW-07~10 待继续审；
->   入口 `docs/policies/README.md`（"需你重点审的 7 处" + 作者审计进度表）。
-> - **顺手修掉的三个真缺陷**：① AI 助手录入成绩绕过 `ScoreService`（`passed` 不写、精度不一致）；
->   ② `evaluate_teacher` 评分范围 1~100 与界面 5 星不一致；③ **成绩删除一直是 500**
->   （`ScoreMapper.deleteByIds` 参数名与 XML 的 `collection` 不匹配，此前无任何测试覆盖）。
->   详见开发记录 **(十一)(十四)**。
-> - **下一步只剩一件**：**M2 框架化迁移**（Spring AI + Redis 多轮记忆 + 会话管理，最长的一块）。
->   建议动工前先跑一遍完整 `node .dsh/eval-p5-tools.cjs` 存档 `ROUTING` 基线（约 10 分钟）。
-> - **动手前**（前四条都是本仓库踩过的）：
->   1. 先起 Redis，否则 `AgentRateLimiterTest`/`LoginInterceptorTest` 会连不上 6379 而红
->      （**用受管后台任务起，`Start-Process` 起的会随命令结束被杀**）；
->   2. `mvn -o -B test -pl edu-api -am` 应 **174 项**全绿；
+> - **主线位置**：**M2 框架化迁移已开工**。计划 1.2（接入 Spring AI）**已完成并实测**；
+>   1.1（拆 `edu-agent` 模块）、1.5（多轮记忆）、1.6（会话 API）、1.7（前端会话侧栏）待做。
+> - **代码状态**：Spring AI 1.0.9 已进构建并跑通真实调用；旧手写 `OpenAiClient`/`AiChatService`
+>   **保留**作回归对照（计划 1.4 要求）。工作区除 `frontend/.vscode/`（未跟踪）外干净。
+> - **M2 基线（迁移前对照，已存档）**：评测 `PASS=75 FAIL=0`、**`ROUTING 10/10`**；
+>   后端测试 **188 项**全绿；工具面 student=17/teacher=7/admin=9。
+>   ⚠️ 7B 模型选路**本身有波动**（同套用例出现过 10/10 与 8/10），迁移后对照要**多次跑**再下结论。
+> - **本轮交付**：`spring-ai-bom:1.0.9` + ollama starter（`ChatModel=OllamaChatModel`、
+>   `ChatMemory=MessageWindowChatMemory` 均自动配置）+ `AgentConfig` 的 `ChatClient` +
+>   `SpringAiWiringTest`（默认只验 Bean，真实调用用 `-Dai.live=true`，已手工跑通"收到"）。
+>   另**修**了输出护栏漏掉"落单 `</tool_call>` 标签"的洞（基线评测当场咬红）。详见开发记录 **(十八)**。
+> - **本轮两个环境坑（已解决，动手前先看）**：
+>   1. **离线构建认领不了本地 Spring AI 制品**：本机 m2 里这批制品来源 id 是 `aliyun-maven`（镜像），
+>      Maven `-o` 模式要求来源 id 在当前仓库列表里，否则报
+>      `spring-ai-bom:pom:1.0.9 (present, but unavailable)`。
+>      已在父 pom 显式声明同 id 仓库解决（**不要**去改 Maven 全局配置或本地仓库文件）。
+>   2. **Spring AI 的传递依赖本地不全**（spring-retry / spring-webflux / micrometer-core…），
+>      联网拉一次；本机沙箱不许写 `~/.m2` → **一次性提权**跑同一条构建命令即可，之后 `mvn -o` 正常。
+> - **下一步（按顺序，可直接开工）**：
+>   1. `ChatMemory` 已就绪 → 用 MySQL 实现 `ChatMemoryRepository`（会话表 + 消息表）；
+>   2. 会话管理 API（建/列/查/删 + 归属校验）+ `POST /ai/chat` 支持 `conversationId`；
+>   3. 挑 1~2 个工具改 `@Tool` 声明式，与手写注册对照；
+>   4. 前端会话侧栏（顺带按 `vue-best-practices` 拆 `views/ai/index.vue`）。
+> - **动手前检查（本仓库踩过的，逐条照做）**：
+>   1. 先起 Redis + 后端；**用受管后台任务起 Redis**（`Start-Process` 起的会随命令结束被杀）；
+>   2. `mvn -o -B test -pl edu-api -am` 应 **188 项**全绿；
 >   3. **改了接口/工具/Mapper 就要先 `mvn -o -B package -DskipTests` 再起后端**（只跑 test 不重打包 =
->      拿旧 jar 测，症状是日志里满屏 `NoResourceFoundException`），然后
+>      拿旧 jar 测，症状是日志里满屏 `NoResourceFoundException`）→ 再
 >      `node .dsh/eval-p5-tools.cjs --inventory-only`（39 项）；
->   4. **`.ps1` 改完必须数非 ASCII 字节**（必须为 0）：`[System.IO.File]::ReadAllBytes(f)`；
->      `git commit -m` 里带引号的多行消息会被 PowerShell 拆坏 → 用 `git commit -F <文件>`。
-> - **本次工作记录**：`docs/开发记录.md` 第 **(十四)**（成绩删除修复 + 浏览器验证 + JW-06 修订）、
->   **(十三)**（学业预警）、**(十二)**（JW-01 审计修订）、**(十一)**（政策文档）、**(十)**（P5）；
->   简历口径见 `docs/简历项目描述.md`。
-> - **仍在等用户确认的事项**：见第 4 节，以及 `docs/policies/README.md` 第三节列的 **6 条**
->   （补退选只能退、评教实名、评教未校验选课关系、成绩范围校验、界面变更留痕、示例培养方案数据）。
+>   4. **`.ps1` 改完必须数非 ASCII 字节**（必须为 0）；
+>      多行/带引号的 `git commit -m` 会被 PowerShell 拆坏 → 用 `git commit -F <文件>`；
+>   5. 跑评测核对审计表前先 `.\.dsh\verify-p5-audit.ps1 -Mark`（水位线已置为 675）。
+> - **本次工作记录**：`docs/开发记录.md` 第 **(十八)**（M2 起步）、**(十七)**（成绩变更日志）、
+>   **(十六)**（评教匿名/归属 + 成绩范围）、**(十五)**（输出护栏）、**(十四)**（成绩删除修复 + 浏览器验证）
+>   等；简历口径见 `docs/简历项目描述.md`。
+> - **待作者确认的事项**：`docs/policies/README.md` 第三节——**8 项已全部收口，当前无待决事项**。
 > - **一个已知的、不影响使用的设计取舍**：`drop_course`（退课）目前是普通写操作、**不弹确认卡片**，
 >   而选课/录成绩/开课申请/审批都弹（已在 JW-02 5.5 如实写明）。若认为退课也该确认，一行就能改。
 
