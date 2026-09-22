@@ -40,6 +40,9 @@ __screenshots__/
 .dsh/commit-msg.txt
 .dsh/commit-message-*.txt
 .dsh/tmp-commit.txt
+.dsh/cm*.txt
+# 评测基线等运行日志
+.dsh/baseline-*.log
 
 # 系统文件
 .DS_Store
