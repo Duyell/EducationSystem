@@ -19,4 +19,17 @@ public interface DeclarativeToolGroup {
 
     /** 该组工具的归属角色（student / teacher / admin），与手写注册器里的角色字符串一致 */
     String role();
+
+    /**
+     * 该组工具要注册到哪些角色下。
+     *
+     * <p>默认只注册到 {@link #role()}；**跨角色通用**的工具（例如 M3 的 `search_policy`：
+     * 学生、教师、管理员都可能问制度问题）覆写本方法即可，不需要把同一个类写三遍。
+     *
+     * <p>注意这里仍然要求显式写出角色列表：角色是权限边界，
+     * "某工具对所有人开放"必须是一句**看得见的声明**，而不是靠默认值推断出来的。
+     */
+    default java.util.List<String> roles() {
+        return java.util.List.of(role());
+    }
 }

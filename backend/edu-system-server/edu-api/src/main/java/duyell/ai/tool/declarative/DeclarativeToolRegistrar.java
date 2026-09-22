@@ -47,21 +47,26 @@ public class DeclarativeToolRegistrar implements SmartInitializingSingleton {
         }
         int total = 0;
         for (DeclarativeToolGroup group : groups) {
-            List<ToolDefinition> definitions = scanner.scan(group.role(), group);
-            if (definitions.isEmpty()) {
-                log.warn("声明式工具组 [{}] 一个工具都没扫到：检查 @Tool 方法是否 public",
-                        group.getClass().getSimpleName());
-                continue;
+            List<String> targetRoles = group.roles();
+            // 一个工具组可以服务多个角色（如 M3 的 search_policy 三角色通用）：
+            // 每个角色都注册一份**独立的定义**，仍满足"同名工具跨角色互不覆盖"的约定
+            for (String role : targetRoles) {
+                List<ToolDefinition> definitions = scanner.scan(role, group);
+                if (definitions.isEmpty()) {
+                    log.warn("声明式工具组 [{}] 在角色 [{}] 下一个工具都没扫到：检查 @Tool 方法是否 public",
+                            group.getClass().getSimpleName(), role);
+                    continue;
+                }
+                for (ToolDefinition definition : definitions) {
+                    registry.registerOverride(role, definition);
+                }
+                total += definitions.size();
+                log.info("声明式工具接管完成: role={}, 共 {} 个 -> {}",
+                        role, definitions.size(),
+                        definitions.stream().map(ToolDefinition::name).toList());
             }
-            for (ToolDefinition definition : definitions) {
-                registry.registerOverride(group.role(), definition);
-            }
-            total += definitions.size();
-            log.info("声明式工具接管完成: role={}, 共 {} 个 -> {}",
-                    group.role(), definitions.size(),
-                    definitions.stream().map(ToolDefinition::name).toList());
         }
-        log.info("声明式工具接管汇总: {} 个工具组, {} 个工具",
+        log.info("声明式工具接管汇总: {} 个工具组, {} 个工具（按角色计）",
                 groups.size(), total);
     }
 }
