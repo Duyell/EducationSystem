@@ -133,38 +133,6 @@ const renderMarkdown = (content: string) => {
           class="text-msg"
           v-html="renderMarkdown(msg.content)"
         ></div>
-        <!--
-          M3 来源卡片：把"回答依据"直接摆在回答下面。
-          数据来自后端 sources 事件（工具返回带 citation 的结果时推出），
-          因此只有制度类问答会出现——这也正好符合"有据可依"只在需要依据时才展示。
-        -->
-        <div
-          v-if="msg.sources && msg.sources.length > 0"
-          class="sources-card"
-        >
-          <div class="sources-head">
-            <el-icon :size="14">
-              <Document />
-            </el-icon>
-            依据 {{ msg.sources.length }} 条制度条款
-          </div>
-          <div
-            v-for="(source, index) in msg.sources"
-            :key="source.docId ? `${source.docId}-${index}` : index"
-            class="source-item"
-          >
-            <span class="source-index">{{ index + 1 }}</span>
-            <span class="source-text">{{ source.citation }}</span>
-            <el-tag
-              v-if="source.docId"
-              size="small"
-              type="info"
-              effect="plain"
-            >
-              JW-{{ source.docId }}
-            </el-tag>
-          </div>
-        </div>
         <div
           v-else-if="msg.type === 'error'"
           class="error-msg"
@@ -240,6 +208,43 @@ const renderMarkdown = (content: string) => {
               effect="plain"
             >
               已取消
+            </el-tag>
+          </div>
+        </div>
+        <!--
+          M3 来源卡片：把"回答依据"直接摆在回答下面。
+          数据来自后端 sources 事件（工具返回带 citation 的结果、或服务端强制注入条款时推出），
+          因此只有制度类问答会出现——这也正好符合"有据可依"只在需要依据时才展示。
+
+          ⚠️ 位置有讲究：它必须放在上面那条 v-if / v-else-if 链**之外**。
+          第一版把它插在 text-msg 与 error-msg 之间，等于**从中间截断了链**——
+          error/confirm 两个分支从此变成"sources 为空时才渲染"，今天看不出问题
+          （错误消息本来就没有来源），但任何一次后续改动都可能让它静默错位。
+        -->
+        <div
+          v-if="msg.sources && msg.sources.length > 0"
+          class="sources-card"
+        >
+          <div class="sources-head">
+            <el-icon :size="14">
+              <Document />
+            </el-icon>
+            依据 {{ msg.sources.length }} 条制度条款
+          </div>
+          <div
+            v-for="(source, index) in msg.sources"
+            :key="source.docId ? `${source.docId}-${index}` : index"
+            class="source-item"
+          >
+            <span class="source-index">{{ index + 1 }}</span>
+            <span class="source-text">{{ source.citation }}</span>
+            <el-tag
+              v-if="source.docId"
+              size="small"
+              type="info"
+              effect="plain"
+            >
+              JW-{{ source.docId }}
             </el-tag>
           </div>
         </div>

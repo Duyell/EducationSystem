@@ -34,6 +34,9 @@ __screenshots__/
 .dsh/verify-p4-ui.diag.json
 .dsh/verify-warning-ui.diag.json
 .dsh/verify-m2-ui.diag.json
+# M3 来源卡片的 UI 校验产物：诊断 json 与截图（每次运行重写，不入库）
+.dsh/verify-sources-ui.diag.json
+.dsh/verify-sources-ui.png
 # P5 评测的运行态产物：审计水位线（每次 -Mark 重写）与整次运行日志
 .dsh/p5-audit-watermark.txt
 .dsh/p5-eval-run.log
