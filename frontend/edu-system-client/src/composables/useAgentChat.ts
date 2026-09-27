@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
-import type { AgentSseEvent, ChatMsg } from '@/types/models'
+import type { AgentSseEvent, ChatMsg, PolicySource } from '@/types/models'
 
 /**
  * 与 Agent 的一次对话（SSE 流式 + 危险操作确认）。
@@ -28,6 +28,14 @@ export function useAgentChat(options: UseAgentChatOptions = {}) {
   const currentAssistantMsg = ref<ChatMsg | null>(null)
   /** 当前等待用户决定的确认卡片（同一时刻只允许一个） */
   const pendingConfirm = ref<ChatMsg | null>(null)
+  /**
+   * 已收到但还没挂上的**引用来源**（M3）。
+   *
+   * 为什么需要暂存：`sources` 事件在**工具执行后**就发出，而助手正文要等模型下一轮
+   * 开始吐 token 时才建消息——也就是说来源**先于**消息到达。先存下来，等消息建好再挂，
+   * 来源卡片才不会丢。
+   */
+  let pendingSources: PolicySource[] = []
 
   /** 从 catch 到的 unknown 中安全提取消息（规范要求禁止在 catch 中标注 any） */
   const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err))
@@ -53,6 +61,11 @@ export function useAgentChat(options: UseAgentChatOptions = {}) {
       case 'token':
         if (!currentAssistantMsg.value) {
           currentAssistantMsg.value = { role: 'assistant', type: 'token', content: '' }
+          // 来源比正文先到（工具执行后就发），建消息时把它挂上，来源卡片才不会丢
+          if (pendingSources.length > 0) {
+            currentAssistantMsg.value.sources = pendingSources
+            pendingSources = []
+          }
           messages.value.push(currentAssistantMsg.value)
         }
         currentAssistantMsg.value.content += data.content
@@ -61,6 +74,25 @@ export function useAgentChat(options: UseAgentChatOptions = {}) {
       case 'status':
         // 状态提示当前不展示（协议里仍在，便于排查）
         break
+
+      /**
+       * M3 引用来源：挂到**当轮助手消息**上。
+       *
+       * 两种时序都要处理：来源先到（工具刚执行完，正文还没开始）→ 暂存；
+       * 消息已存在（模型先说了半句再调工具）→ 直接挂上去。
+       */
+      case 'sources': {
+        const list = data.args?.sources ?? []
+        if (list.length === 0) {
+          break
+        }
+        if (currentAssistantMsg.value) {
+          currentAssistantMsg.value.sources = list
+        } else {
+          pendingSources = list
+        }
+        break
+      }
 
       case 'error':
         messages.value.push({ role: 'assistant', type: 'error', content: data.content })

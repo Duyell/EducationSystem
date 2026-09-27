@@ -736,6 +736,8 @@ export interface ChatMsg {
   decided?: boolean
   approved?: boolean
   expired?: boolean
+  /** M3：本轮的引用来源（来源卡片），由 `sources` 事件挂到当轮助手消息上 */
+  sources?: PolicySource[]
 }
 
 /**
@@ -758,4 +760,20 @@ export type AgentSseEvent =
       timeoutSeconds?: number
     }
   | { type: 'confirm_result'; confirmId: string; approved?: boolean; expired?: boolean }
+  /** M3：本轮回答的引用来源（来源卡片的数据），载荷在 args.sources */
+  | { type: 'sources'; args?: { sources?: PolicySource[] } }
   | { type: 'done' }
+
+/**
+ * 一条制度出处（M3 来源卡片）。
+ *
+ * 后端约定：任何工具返回 `{"results":[{"citation": ...}]}` 形状时，其 `citation` 会作为
+ * 本轮回答的出处通过 `sources` 事件推出（见 AgentRuntime#publishSourcesIfAny）。
+ * `citation` 是必有的可读文案（"《重修与补考办法》3. 补考"），其余字段用于补充展示。
+ */
+export interface PolicySource {
+  docId?: string
+  docTitle?: string
+  section?: string
+  citation: string
+}

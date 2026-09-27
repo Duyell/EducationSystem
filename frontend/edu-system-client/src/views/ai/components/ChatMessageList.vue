@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
-import { ChatDotRound, ChatLineSquare, Loading, User, WarningFilled } from '@element-plus/icons-vue'
+import { ChatDotRound, ChatLineSquare, Document, Loading, User, WarningFilled } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import type { ChatMsg } from '@/types/models'
@@ -133,6 +133,38 @@ const renderMarkdown = (content: string) => {
           class="text-msg"
           v-html="renderMarkdown(msg.content)"
         ></div>
+        <!--
+          M3 来源卡片：把"回答依据"直接摆在回答下面。
+          数据来自后端 sources 事件（工具返回带 citation 的结果时推出），
+          因此只有制度类问答会出现——这也正好符合"有据可依"只在需要依据时才展示。
+        -->
+        <div
+          v-if="msg.sources && msg.sources.length > 0"
+          class="sources-card"
+        >
+          <div class="sources-head">
+            <el-icon :size="14">
+              <Document />
+            </el-icon>
+            依据 {{ msg.sources.length }} 条制度条款
+          </div>
+          <div
+            v-for="(source, index) in msg.sources"
+            :key="source.docId ? `${source.docId}-${index}` : index"
+            class="source-item"
+          >
+            <span class="source-index">{{ index + 1 }}</span>
+            <span class="source-text">{{ source.citation }}</span>
+            <el-tag
+              v-if="source.docId"
+              size="small"
+              type="info"
+              effect="plain"
+            >
+              JW-{{ source.docId }}
+            </el-tag>
+          </div>
+        </div>
         <div
           v-else-if="msg.type === 'error'"
           class="error-msg"
@@ -314,7 +346,45 @@ const renderMarkdown = (content: string) => {
   color: #fff;
   border-bottom-right-radius: 2px;
 }
-.message-bubble.assistant {
+/* M3 来源卡片：复刻既有视觉体系（浅底、细边框、次级文字色），不引入新设计语言 */
+.sources-card {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid #e5e6eb;
+  border-radius: 6px;
+  background: #fafafa;
+}
+.sources-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #86909c;
+}
+.source-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 13px;
+  color: #4e5969;
+}
+.source-index {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e8f0ff;
+  color: #165dff;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+.source-text {
+  flex: 1;
+  min-width: 0;
+}.message-bubble.assistant {
   background: #f5f7fa;
   color: #333;
   border-bottom-left-radius: 2px;
@@ -478,3 +548,5 @@ const renderMarkdown = (content: string) => {
   }
 }
 </style>
+
+
