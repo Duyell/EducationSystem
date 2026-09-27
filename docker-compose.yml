@@ -1,6 +1,13 @@
-# 教务系统一键部署：docker compose up -d --build
-# 访问 http://localhost （前端），后端 http://localhost:8080
-# 生产环境务必修改：MySQL 密码、JWT_SECRET、AI_API_KEY
+# 教务系统一键编排：docker compose up -d --build
+# 前端 http://localhost ，后端 http://localhost:8080
+#
+# ⚠️ 说明（2026-09-27 与实现对齐）：
+#   本文件是**参考编排**——本机（Windows）实测走的是"原生三库 + 本地 Ollama"路径
+#   （MySQL / Redis / PostgreSQL+pgvector 都装在 D 盘，Ollama 跑在 11434），
+#   而本机到 Docker Hub 不可达（需镜像源），因此 compose 这条路**未在本机实跑验证**。
+#   对齐点：补上了 pgvector 服务（RAG 需要）与模型/RAG 相关环境变量，
+#   并让 Ollama 默认指向宿主机（容器里的 host.docker.internal）。
+# 生产环境务必修改：MySQL 密码、JWT_SECRET、AI_API_KEY（用环境变量注入，勿写入仓库）
 services:
   mysql:
     image: mysql:8.0
@@ -16,7 +23,7 @@ services:
       - "3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
-      # 首次启动自动建表并导入种子数据
+      # 首次启动自动建表并导入种子数据（两文件都幂等；AI 相关表也已在 edujwxt.sql 里）
       - ./edujwxt.sql:/docker-entrypoint-initdb.d/01-edujwxt.sql:ro
       - ./seed_data.sql:/docker-entrypoint-initdb.d/02-seed_data.sql:ro
     healthcheck:
@@ -36,6 +43,25 @@ services:
       timeout: 3s
       retries: 20
 
+  # 向量库（仅制度问答 RAG 需要）。镜像自带 pgvector 扩展；
+  # 库由 POSTGRES_DB 自动创建，扩展与向量表由应用启动时 initializeSchema 建好。
+  pgvector:
+    image: pgvector/pgvector:pg16
+    container_name: edu-pgvector
+    environment:
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: edurag
+      TZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgvector-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d edurag"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   backend:
     build: ./backend/edu-system-server
     container_name: edu-backend
@@ -46,12 +72,25 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       # 生产环境必须更换为强随机密钥（>=32 字节）
       JWT_SECRET: edu-system-docker-default-secret-change-me-0123456789
-      # 部署 AI 对话功能时设置（可选，不设则 AI 功能降级）
-      AI_API_KEY: ${AI_API_KEY:-}
+
+      # ---------- 模型：默认指向**宿主机上的 Ollama**（容器内用 host.docker.internal） ----------
+      AI_BASE_URL: ${AI_BASE_URL:-http://host.docker.internal:11434/v1}
+      AI_MODEL: ${AI_MODEL:-qwen2.5:7b}
+      AI_API_KEY: ${AI_API_KEY:-ollama}
+      AI_OLLAMA_BASE_URL: ${AI_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-bge-m3}
+
+      # ---------- RAG（制度问答）：指向 compose 内的 pgvector ----------
+      AI_RAG_ENABLED: ${AI_RAG_ENABLED:-true}
+      AI_RAG_JDBC_URL: jdbc:postgresql://pgvector:5432/edurag
+      AI_RAG_USERNAME: postgres
+      AI_RAG_PASSWORD: 123456
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      pgvector:
         condition: service_healthy
     ports:
       - "8080:8080"
@@ -66,3 +105,4 @@ services:
 
 volumes:
   mysql-data:
+  pgvector-data:
