@@ -60,15 +60,24 @@
 > - **本轮提交**（全部已推 `origin/main`）：
 >   `d5d8539` 来源事件 → `2c9824e` 前端卡片 → `5aff7d3` 注入路径也出来源 → `dce1639` 卡片实机验证 19/19
 >   → `443b2fb` 出处落库（刷新后卡片仍在）→ `616cf5f` **CI 夹具修复** → `0a36316` **前端大小写修复**。
-> - **⏳ 唯一待确认**：CI（`.github/workflows/ci.yml`）在 `0a36316` 上的运行结果。此前已知的
->   **后端测试步骤已变绿**（305 passed / 6 skipped），剩下要确认的是新加的前端类型检查步骤
->   ——本机 `vue-tsc` 与 `npm run build-only` 都已通过，但**CI 才是权威**。
->   查看：`gh run list --limit 3` / `gh run view <id>`；`gh` 取日志需要一次性提权（写用户目录缓存）。
+> - **⏳ 唯一待确认**：CI 在 `980d1bf` 上的结果。**已经变绿的步骤**（实测 `gh run view`）：
+>   `Import schema` ✓ → **`Backend tests (305/6)` ✓** → **`Frontend type check` ✓** →
+>   `Package backend` ✓ → `Start backend` ✓ → **`Assertions — tool surface 39/39` ✓**。
+>   **还红的是 `Assertions — privacy & audit log`（PASS=25 FAIL=15）**，根因与本轮修的测试**是同一类**：
+>   - `[FAIL] teacher payload has rows (seed has evaluations)`、`[FAIL] student still sees own evaluations`
+>     —— **脚本也假设了种子数据里有评教记录**（`seed_data.sql` 里一条都没有）。
+>     后面 `duplicate rejection`、`fixture: course 2 not yet evaluated`、`cleanup removed the probe row`
+>     等失败都是这条缺失引发的连锁反应。
+>   - `[FAIL] teacher can change the grade (HTTP 200) -> code 400 请求体格式错误`：**值得单独查**——
+>     这种"请求体格式错误"在 CI 的 pwsh（Linux 上的 PowerShell 7）与本机（Windows 5.1）之间
+>     最典型的差异是**引号/转义**。先怀疑脚本拼 JSON 的方式，不要怀疑接口。
+>   **下一步修法**（照本轮测试的做法）：让脚本**自己造评教夹具**（它已经有一处 course 2 的夹具与清理逻辑，
+>   把前面那几条"依赖种子"的断言改成先建夹具再断言），再排查那处 400。
+>   `Assertions — conversations` 步骤因前面失败**未执行**，修完 privacy 才会跑到。
+>   查看：`gh run list --limit 3` / `gh run view <id>` / `gh run view <id> --log-failed`；
+>   `gh` 取日志需要一次性提权（它要写用户目录缓存）。
 > - **已知待办（下次开工，按优先级）**：
->   1. **确认 CI 全绿**（含三套断言脚本：工具面 39/39、隐私 40/40、会话 25/25）。
->      注意：这三套脚本本机**连跑时**会话脚本偶发失败（前面的脚本会以 2023001 重新登录、
->      覆盖 Redis 里的 token）——CI 里是**顺序执行**，若真命中会表现为会话步骤红，
->      修法是让 `verify-m2-conversations.cjs` 遇到 401 时重新登录。单独重跑本机 **25/25** 已验证。
+>   1. **修 `verify-privacy.ps1` 的种子依赖**（CI 现在只差这一步）——见上面的"唯一待确认"。
 >   2. **M5 评测门禁进 CI**：RAG 评测（`eval-rag.cjs --strict-faithfulness`）与来源卡片/会话 UI 的
 >      Playwright 实机验证目前只能本机跑；可加 pgvector service + 假嵌入，或维持"实机验证在本地"。
 >   3. **M4**：多智能体 / MCP 方向；可选清理：手写 Registrar 与声明式类的**载荷组装去重**。
