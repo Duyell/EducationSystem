@@ -226,7 +226,7 @@ mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 
 | 忠实度评测默认是诊断性 | `eval-rag.cjs` 的端到端部分不计入退出码（7B 措辞不稳定）；里程碑验收用 `--strict-faithfulness` | 有意为之，避免"碰运气式全绿" |
 | 载荷组装代码有两份 | 手写工具注册器与声明式类各拼一份"给模型看的 JSON"（对照期取舍，删手写实现即消失） | 计划内 |
 | 无 LICENSE | 测试与脚本可跑，仓库暂未声明开源协议 | 待补 |
-| CI 覆盖有限 | GitHub Actions 已跑"起床 → 导入数据 → 全量测试 → 三个断言脚本"，但 **RAG 未纳入**（CI 容器里没有 pgvector + 本地 Ollama）；前端只做类型检查 | 待补（计划：加 pgvector service + 前端 `type-check` 步骤） |
+| CI 覆盖有限 | GitHub Actions 已跑"起床 → 导入数据 → 全量测试 → 前端类型检查 → 三个断言脚本"，但 **RAG 未纳入**（CI 容器里没有 pgvector + 本地 Ollama）；来源卡片与会话 UI 的 Playwright 实机验证也只在本地跑 | 待补（计划：加 pgvector service + 假嵌入跑检索门禁） |
 | 本机模型冷启动慢 | 后端重启后第一次提问要等 Ollama 装载对话与嵌入两个模型（实测单轮可达 260 秒）；预热一轮即可降到 ~20 秒 | 已知，非缺陷 |
 | `docker-compose.yml` 仍未实跑 | 已补齐 pgvector 服务与模型环境变量，但本机到 Docker Hub 不可达，**实测路径是"原生三库 + 本地 Ollama"** | 待核对 |
 | 示例演示数据会随时间老化 | `seed_data.sql` 里考试时间是导入那刻固化的绝对时间，跑考试相关演示前先执行 `docs/sql/2026-09-27-reanchor-demo-exam-dates.sql` | 已知，脚本已提供 |

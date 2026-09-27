@@ -182,9 +182,17 @@ class DeclarativeToolMigrationTest {
         List<Map<String, Object>> rows = objectMapper.readValue(result.payload(),
                 new TypeReference<>() {
                 });
-        List<Integer> ids = rows.stream().map(r -> ((Number) r.get("courseId")).intValue()).toList();
-        assertTrue(ids.containsAll(List.of(1, 2, 3, 4, 5, 6)),
-                "应返回该生已选课程 1~6，实际=" + ids);
+        // 期望集合从库里现算，不硬编码：原来写的是"应包含 1~6"，但种子数据只给该生选了 1~4
+        // （5、6 是本机跑演示脚本时选上的），于是 CI（干净库）红、本机绿。
+        // 改成"与该生真实选课集合逐项相等"后不依赖环境，而且更强（多返回别人的课也会被抓住）。
+        List<Integer> expected = courseSelectionMapper.selectByStudentId(STUDENT).stream()
+                .map(com.duyell.CourseSelection::getCourseId)
+                .sorted()
+                .toList();
+        assertFalse(expected.isEmpty(), "种子数据里该生应有选课记录");
+
+        List<Integer> ids = rows.stream().map(r -> ((Number) r.get("courseId")).intValue()).sorted().toList();
+        assertEquals(expected, ids, "应返回该生真实的选课集合，实际=" + ids);
 
         // 空列表是"查错人/查错表"的典型症状，这里再单独钉一次
         assertFalse(rows.isEmpty(), "返回空列表通常意味着查的不是本人数据");

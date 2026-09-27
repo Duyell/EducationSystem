@@ -73,6 +73,13 @@ class TeacherDeclarativeToolsTest {
     private CourseApplyService courseApplyService;
 
     /**
+     * 只用于**造夹具**（教师评价）：种子数据里没有 teacher_evaluation 记录，
+     * 而这些测试要验的是"工具怎么读它"。夹具不该反过来依赖被测代码，所以用 JdbcTemplate。
+     */
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    /**
      * 期望的一个参数：类型 + 取值约束。
      *
      * <p>{@code min}/{@code max} 为 {@code null} 表示"**期望这一端不存在**"
@@ -401,18 +408,37 @@ class TeacherDeclarativeToolsTest {
     /** 评教必须是匿名的：服务端剥掉提交人，工具不得把它带出来 */
     @Test
     void evaluationsAreAnonymousAndReal() throws Exception {
+        // 夹具由测试自己造。原来这里注释写"种子数据：教师 10001 收到 2 条评价"，
+        // 但 seed_data.sql 里一条 teacher_evaluation 都没有——本机绿是因为跑演示脚本时提交过评价，
+        // CI 干净库上必红。测试不该断言环境状态。
+        givenEvaluationsForThisTeacher();
+
         ToolExecutionResult result = run("get_my_evaluations", Map.of());
         List<Map<String, Object>> rows = objectMapper.readValue(result.payload(),
                 new TypeReference<>() {
                 });
-        // 种子数据：教师 10001 收到 2 条评价（课程 1 与课程 4，均为 5 分）
-        assertEquals(2, rows.size(), "10001 应收到 2 条评价，实际=" + rows);
+        assertEquals(2, rows.size(), "刚写入 2 条评价，应原样返回 2 条，实际=" + rows);
         for (Map<String, Object> row : rows) {
             assertNull(row.get("studentId"), "匿名评教不得带出提交人学号：" + row);
             assertNull(row.get("studentName"), "匿名评教不得带出提交人姓名：" + row);
         }
         assertTrue(rows.stream().allMatch(r -> Integer.valueOf(5).equals(r.get("score"))),
-                "评价分值应是种子里的 5 分，实际=" + rows);
+                "评价分值应原样返回，实际=" + rows);
+    }
+
+    /**
+     * 给本教师造 2 条评价（先清空本人全部评价再插入）。
+     *
+     * <p>清空是必须的：`teacher_evaluation` 上有 (course_id, student_id) 唯一约束，
+     * 本机可能残留演示数据（跑过评教演示），不清就会插入冲突或数量对不上。
+     * 本类带 {@code @Transactional}，跑完自动回滚，不会污染库。
+     */
+    private void givenEvaluationsForThisTeacher() {
+        jdbcTemplate.update("delete from teacher_evaluation where teacher_id = ?", TEACHER);
+        jdbcTemplate.update("insert into teacher_evaluation(course_id, student_id, teacher_id, score, content) "
+                + "values(?, ?, ?, ?, ?)", 1, "2023001", TEACHER, 5, "测试夹具");
+        jdbcTemplate.update("insert into teacher_evaluation(course_id, student_id, teacher_id, score, content) "
+                + "values(?, ?, ?, ?, ?)", 4, "2023002", TEACHER, 5, "测试夹具");
     }
 
     @Test

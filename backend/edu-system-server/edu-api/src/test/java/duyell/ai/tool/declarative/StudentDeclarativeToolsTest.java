@@ -59,6 +59,14 @@ class StudentDeclarativeToolsTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    /**
+     * 只用于**造夹具**（例如教师评价）：种子数据里没有 teacher_evaluation 记录，
+     * 而这些测试要验的是"工具怎么读它"，不是"种子数据长什么样"。
+     * 用 JdbcTemplate 而不是生产 mapper：夹具不该反过来依赖被测代码。
+     */
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     /** 一个工具的"迁移契约"：展示名、风险等级、必填参数、参数键集合 */
     private record Contract(String name, String displayName, RiskLevel riskLevel,
                             List<String> required, Set<String> properties) {
@@ -453,22 +461,56 @@ class StudentDeclarativeToolsTest {
     /** 评价状态：已评价/未评价都必须给出布尔值与中文说明（两个方向都测，避免"恒 true"） */
     @Test
     void evaluationCheckReportsBothDirections() throws Exception {
+        // 夹具由测试自己造：**种子数据里根本没有 teacher_evaluation 记录**
+        // （注释曾写"种子数据里课程 1 已评价"，那是本机跑演示脚本留下的残留——
+        //  CI 干净库上这条必红。见 givenEvaluation 的注释。）
+        givenEvaluation(1, 5);
+        givenNoEvaluation(3);
+
         Map<String, Object> evaluated = payloadAsMap("check_evaluation", Map.of("courseId", 1), STUDENT);
-        assertEquals(Boolean.TRUE, evaluated.get("evaluated"), "种子数据里课程 1 已评价，实际=" + evaluated);
+        assertEquals(Boolean.TRUE, evaluated.get("evaluated"), "刚写入评价的课程应报已评价，实际=" + evaluated);
 
         Map<String, Object> notEvaluated = payloadAsMap("check_evaluation", Map.of("courseId", 3), STUDENT);
-        assertEquals(Boolean.FALSE, notEvaluated.get("evaluated"), "课程 3 未评价，实际=" + notEvaluated);
+        assertEquals(Boolean.FALSE, notEvaluated.get("evaluated"), "未评价的课程应报未评价，实际=" + notEvaluated);
     }
 
-    /** 我的评价：只返回本人提交的评价（种子数据里课程 1、4） */
+    /** 我的评价：只返回本人提交的评价 */
     @Test
     void myEvaluationsReturnsOnlyOwnRows() throws Exception {
+        givenEvaluation(1, 5);
+        // 另一个学生的评价不该混进来
+        jdbcTemplate.update("insert into teacher_evaluation(course_id, student_id, teacher_id, score, content) "
+                + "values(?, ?, ?, ?, ?)", 4, "2023002", "10001", 4, "测试夹具（他人）");
+
         List<Map<String, Object>> rows = objectMapper.readValue(
                 String.valueOf(execute("get_my_evaluations", Map.of(), STUDENT)), new TypeReference<>() {
                 });
-        assertFalse(rows.isEmpty(), "种子数据里该生应有评价记录");
+        assertFalse(rows.isEmpty(), "刚写入评价后，该生应有评价记录");
         assertTrue(rows.stream().allMatch(r -> STUDENT.equals(r.get("studentId"))),
                 "只应返回本人评价，实际=" + rows);
+    }
+
+    /**
+     * 给 (课程, 本人) 造一条评价。
+     *
+     * <p>**为什么测试要自己造夹具**：这条测试原来断言"种子数据里课程 1 已评价"，
+     * 而 `seed_data.sql` 里一条 `teacher_evaluation` 都没有——本机之所以绿，
+     * 是因为跑演示脚本时真的提交过评价。CI 用干净库，于是红。
+     * 测试断言环境状态是反模式（换台机器/清一次库就废），夹具应当由测试负责。
+     *
+     * <p>先删后插：`teacher_evaluation` 上有 (course_id, student_id) 唯一约束，
+     * 演示残留会与夹具冲突。本类带 `@Transactional`，跑完自动回滚。
+     */
+    private void givenEvaluation(int courseId, int score) {
+        givenNoEvaluation(courseId);
+        jdbcTemplate.update("insert into teacher_evaluation(course_id, student_id, teacher_id, score, content) "
+                + "values(?, ?, ?, ?, ?)", courseId, STUDENT, "10001", score, "测试夹具");
+    }
+
+    /** 保证 (课程, 本人) 没有评价记录 */
+    private void givenNoEvaluation(int courseId) {
+        jdbcTemplate.update("delete from teacher_evaluation where course_id = ? and student_id = ?",
+                courseId, STUDENT);
     }
 
     /** 可选课程列表：不带关键词时返回全部可选课程（种子库有课），且支持按名称筛选 */

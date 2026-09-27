@@ -1,9 +1,9 @@
 # CI：把"手工敲的验证命令"变成每次 push 自动跑的门禁
 #
 # 设计取舍（为什么长这样）：
-#   1. **只跑不依赖大模型的部分** —— 296 项后端测试 + 隐私 40 / 工具面 39 / 会话 25 三套断言。
-#      需要 Ollama 与真实模型的用例（-Dai.live=true、RAG 真机、会话 UI）在 CI 里没有模型可用，
-#      它们本来就默认跳过（gated by system property），这里不额外打开。
+#   1. **只跑不依赖大模型的部分** —— 305 项后端测试 + 隐私 40 / 工具面 39 / 会话 25 三套断言
+#      + 前端类型检查。需要 Ollama 与真实模型的用例（-Dai.live=true、RAG 真机、会话 UI）在 CI 里
+#      没有模型可用，它们本来就默认跳过（gated by system property），这里不额外打开。
 #   2. **一个 job 顺序跑**，而不是拆成多个 job 并行：日志集中在一个地方，排查更方便
 #      （这个项目吃过"多处并发写同一个库互相干扰"的亏，见开发记录里批次迁移那几轮）。
 #   3. MySQL 用 service 容器，启动后**显式导入**建表与种子数据：测试里的夹具依赖种子数据，
@@ -65,11 +65,28 @@ jobs:
           done
 
       # ① 后端全量测试（默认跳过需要真实模型的用例）
-      - name: Backend tests (expect 296 passed, 6 skipped)
+      # ⚠️ 期望数字必须跟着测试数一起改：写死"296"时新增测试会让这一步的**名字**变成谎话
+      # （数字只写在名字里，不参与判定——真正的判定是 mvn 的退出码）。
+      - name: Backend tests (expect 305 passed, 6 skipped)
         working-directory: backend/edu-system-server
         run: mvn -B test -pl edu-api -am
 
-      # ② 起后端，跑三套**不依赖模型**的断言脚本
+      # ② 前端类型检查（vue-tsc strict）。放在这里而不是另开 job：本仓库的取舍是
+      #    "一个 job 顺序跑、日志集中"，类型错误本来也该在合并前拦住。
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/edu-system-client/package-lock.json
+
+      - name: Frontend type check (vue-tsc)
+        working-directory: frontend/edu-system-client
+        run: |
+          npm ci
+          npm run type-check
+
+      # ③ 起后端，跑三套**不依赖模型**的断言脚本
       - name: Package backend
         working-directory: backend/edu-system-server
         run: mvn -B package -DskipTests -pl edu-api -am
@@ -78,13 +95,21 @@ jobs:
         working-directory: backend/edu-system-server/edu-api/target
         run: |
           nohup java -jar edu-api-0.0.1-SNAPSHOT.jar > backend.log 2>&1 &
+          up=0
           for i in $(seq 1 60); do
             if curl -sf -o /dev/null http://localhost:8080/login -X POST \
                  -H 'Content-Type: application/json' -d '{"username":"2023001","password":"123456"}'; then
-              echo "backend up after ${i}s"; break
+              echo "backend up after ${i}s"; up=1; break
             fi
             sleep 1
           done
+          # 起不来就必须在这一步红：否则后面三套断言脚本会以"连不上/数据不对"的形式失败，
+          # 排查时得先把日志翻一遍才知道根因是启动失败。
+          if [ "$up" != "1" ]; then
+            echo "::error::backend did not start within 60s"
+            tail -100 backend.log
+            exit 1
+          fi
 
       - name: Assertions — tool surface (expect 39/39)
         run: node .dsh/eval-p5-tools.cjs --inventory-only

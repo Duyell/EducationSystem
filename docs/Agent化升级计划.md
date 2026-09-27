@@ -72,13 +72,20 @@
 >   现在 `ai_message.sources_json` 存原始 JSON，`SourceCapturingPublisher` 在 SSE 出口上抄一份
 >   最后一次来源，`ChatMemoryWithSources#addAssistant` 与正文一起落库。**已执行的迁移**：
 >   `docs/sql/2026-09-27-ai-message-sources.sql`（幂等；本机已跑，`edujwxt.sql` 已同步）。
-> - **最新实测数字**：后端测试 **305 项全绿**（0 失败，6 项外部依赖用例跳过）；隐私/审计 **40/40**；
+> - **CI 也已修绿**（本轮）：它从第一次运行起就红——5 条测试断言的是"种子数据里有 X"，
+>   而 X 其实只存在于**本机演示残留**里（`seed_data.sql` 里一条评教记录都没有；2023001 只有 4 门选课，
+>   测试却写"已选 6 门"）。已改为**测试自带夹具 + 期望值从库里现算**，并顺手抓出
+>   `OutputGuardrailIntegrationTest` 的一条**竞态**（断言跑在落库之前，且两条"内容干净"断言会空过）。
+>   验证方式值得沿用：本机建干净库 `edujwxt_ci`（照 CI 顺序导入），用
+>   `-Dspring.datasource.url=...` 指过去跑 —— 修复前复现 5 条失败，修复后 305/0。
+>   CI 另新增**前端 `vue-tsc` 类型检查**步骤。
+> - **最新实测数字**：后端测试 **305 项全绿**（0 失败，6 项外部依赖用例跳过；干净库与本机库各跑一遍）；隐私/审计 **40/40**；
 >   工具面 **39/39**；会话链路 **25/25**；RAG 检索 **Hit@5 12/12、MRR 0.944、关键词 100%**；
 >   严格端到端 **PASS=9 FAIL=0**；**来源卡片 UI 实机 19/19**（`.dsh/verify-sources-ui.cjs`，
 >   含"刷新后卡片仍在"）；前端 `npm run type-check`（vue-tsc strict）exit 0。
 > - **下一步（可直接开工）**：
 >   1. **M5 评测门禁进 CI**：`.dsh/eval-rag.cjs --strict-faithfulness` 目前只能本机跑（CI 里没有 pgvector + Ollama）；
->      可给 CI 加 pgvector service + 预置嵌入（或用假嵌入跑检索门禁），前端 `type-check` 也建议进 CI。
+>      可给 CI 加 pgvector service + 预置嵌入（或用假嵌入跑检索门禁）；来源卡片/会话 UI 的 Playwright 实机验证同理。
 >   2. **M4**：多智能体 / MCP 方向；以及可选的小清理：手写 Registrar 与声明式类的**载荷组装去重**
 >      （学生那对 645/978 行逐字相同，对照期结束即可删手写实现）。
 >   3. 可选：来源卡片目前只在**当轮/历史会话**显示，`eval-rag.cjs` 的 Part 2 仍是诊断性——

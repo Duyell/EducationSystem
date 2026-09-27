@@ -215,7 +215,13 @@ class SelectionRoundAndSelectionServiceTest {
 
         assertEquals(7, list.size(), "2024-2025-1 有 7 门课");
         long selected = list.stream().filter(CourseSelectionService.SelectableCourse::selected).count();
-        assertEquals(6, selected, "2023001 已选 6 门");
+        // 期望值从库里现算，不写死"6 门"：种子数据其实只给该生选了 4 门（1~4），
+        // "6 门"是本机跑演示脚本时多选了两门留下的印象。CI 用干净库，写死就会红。
+        long expectedSelected = courseSelectionMapper.selectByStudentId(STUDENT).stream()
+                .filter(cs -> list.stream().anyMatch(c -> c.course().getId().equals(cs.getCourseId())))
+                .count();
+        assertTrue(expectedSelected > 0, "种子数据里该生在本学期应有选课记录，否则这条测试失去意义");
+        assertEquals(expectedSelected, selected, "列表里标记为已选的门数应等于库里该生在本学期的选课数");
 
         CourseSelectionService.SelectableCourse ma101 = list.stream()
                 .filter(c -> COURSE_MA101 == c.course().getId())

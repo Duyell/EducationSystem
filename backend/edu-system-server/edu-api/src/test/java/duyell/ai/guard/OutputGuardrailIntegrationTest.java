@@ -165,20 +165,49 @@ class OutputGuardrailIntegrationTest {
 
             // ③ 落库的对话记录同样干净：护栏不只过滤"发给前端的流"，也过滤"进入多轮记忆的正文"。
             //    否则那段畸形 JSON 会成为下一轮的上下文，模型会把自己上次的坏输出再学一遍。
-            List<AiMessage> persisted = messageMapper.listByConversation(conversationId);
+            //
+            // ⚠️ 必须**等助手消息落库**再断言，不能直接读一次就下结论：
+            //    modelFinished 在第二轮模型调用结束时就放行，而"落库"发生在
+            //    AgentRuntime.run() 返回之后（见 AiChatService#processChat）。
+            //    也就是说这两句断言原本跑在落库之前——本机侥幸通过，CI 干净库上偶发红。
+            //    更糟的是那两条 assertFalse 在"只有用户消息"时会**空过**，
+            //    等于护栏的回归防线实际上是空的。
+            List<AiMessage> persisted = awaitAssistantAnswer(conversationId, "3.8834", 10_000);
             String transcript = persisted.toString();
             assertFalse(transcript.contains("\"arguments\""),
                     "落库的助手回复里不应残留原始工具调用 JSON：" + transcript);
             assertFalse(transcript.contains("tool_call"),
                     "落库的助手回复里不应残留工具调用标签：" + transcript);
-            assertTrue(persisted.stream().anyMatch(m -> "assistant".equals(m.getRole())
-                            && m.getContent().contains("3.8834")),
+            assertNotNull(persisted.stream().filter(m -> "assistant".equals(m.getRole())
+                            && m.getContent().contains("3.8834")).findFirst().orElse(null),
                     "模型最终的可见回答应被记入会话： " + transcript);
         } finally {
             conversationService.delete(conversationId, STUDENT);
             assertTrue(messageMapper.listByConversation(conversationId).isEmpty(),
                     "测试结束应清干净自己建的会话消息");
         }
+    }
+
+    /**
+     * 轮询等待助手正文落库（落库在后台线程、发生在模型跑完之后，与测试线程没有同步点）。
+     *
+     * @param needle 期望出现在助手正文里的片段
+     * @return 该会话当时的消息列表（无论是否等到，便于断言里打印实际内容）
+     */
+    private List<AiMessage> awaitAssistantAnswer(String conversationId, String needle, long timeoutMs)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        List<AiMessage> messages = List.of();
+        while (System.currentTimeMillis() < deadline) {
+            messages = messageMapper.listByConversation(conversationId);
+            boolean found = messages.stream().anyMatch(m -> "assistant".equals(m.getRole())
+                    && m.getContent() != null && m.getContent().contains(needle));
+            if (found) {
+                return messages;
+            }
+            Thread.sleep(100);
+        }
+        return messages;
     }
 }
 
