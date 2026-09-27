@@ -4,6 +4,7 @@ import com.duyell.AiConversation;
 import com.duyell.AiMessage;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * AI 会话管理（M2 计划 1.6）。
@@ -48,6 +49,12 @@ public interface ConversationService {
     /** 追加一条用户消息（同时在会话计数上 +1） */
     void appendUserMessage(String conversationId, String content);
 
-    /** 追加一条助手消息（同时在会话计数上 +1） */
-    void appendAssistantMessage(String conversationId, String content);
+    /**
+     * 追加一条助手消息（同时在会话计数上 +1）。
+     *
+     * @param sources 本轮回答的来源卡片出处（形如 {@code {docId, docTitle, section, citation}}）；
+     *                {@code null}/空表示本轮没有依据。**出处随消息落库**，
+     *                否则刷新历史会话时卡片会消失（M3 收尾）。
+     */
+    void appendAssistantMessage(String conversationId, String content, List<Map<String, Object>> sources);
 }

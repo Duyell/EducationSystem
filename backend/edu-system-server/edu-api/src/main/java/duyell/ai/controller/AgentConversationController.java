@@ -2,6 +2,7 @@ package duyell.ai.controller;
 
 import com.duyell.AiConversation;
 import com.duyell.AiMessage;
+import duyell.ai.memory.SourceJson;
 import duyell.service.ConversationService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import utils.Result;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +62,10 @@ public class AgentConversationController {
      *
      * <p>返回 {@code {conversation, messages}}：前端进入某个历史会话时需要标题，
      * 再多发一次请求只为拿标题没有必要。
+     *
+     * <p>每条消息的 {@code sources}（来源卡片出处）在这里由 {@code sources_json} 解析出来，
+     * 而不是把原始字符串丢给前端：DB 里存 JSON 是为了写入方无须转换、加字段不用改表，
+     * 但接口形状应当直接是数组——让前端 parse 字符串属于把内部存储细节泄漏出去。
      */
     @GetMapping("/{id}/messages")
     public Result<Map<String, Object>> messages(@PathVariable("id") String id,
@@ -68,9 +74,21 @@ public class AgentConversationController {
         AiConversation conversation = conversationService.requireOwned(id, userId);
         List<AiMessage> messages = conversationService.messages(id, userId);
 
+        List<Map<String, Object>> shaped = new ArrayList<>(messages.size());
+        for (AiMessage message : messages) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", message.getId());
+            item.put("conversationId", message.getConversationId());
+            item.put("role", message.getRole());
+            item.put("content", message.getContent());
+            item.put("createTime", message.getCreateTime());
+            item.put("sources", SourceJson.parse(message.getSourcesJson()));
+            shaped.add(item);
+        }
+
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("conversation", conversation);
-        data.put("messages", messages);
+        data.put("messages", shaped);
         return Result.success(data);
     }
 

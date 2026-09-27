@@ -3,6 +3,7 @@ package duyell.service;
 import com.duyell.AiConversation;
 import com.duyell.AiMessage;
 import duyell.ai.memory.MybatisChatMemory;
+import duyell.ai.memory.SourceJson;
 import duyell.mapper.AiMessageMapper;
 import duyell.service.impl.ConversationServiceImpl;
 import org.junit.jupiter.api.Test;
@@ -14,12 +15,15 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 import utils.BusinessException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -62,7 +66,7 @@ class ConversationServiceTest {
 
     private void appendTurn(AiConversation c, String userText, String assistantText) {
         conversationService.appendUserMessage(c.getId(), userText);
-        conversationService.appendAssistantMessage(c.getId(), assistantText);
+        conversationService.appendAssistantMessage(c.getId(), assistantText, List.of());
     }
 
     /**
@@ -148,11 +152,55 @@ class ConversationServiceTest {
     void blankAssistantContentIsNotPersisted() {
         AiConversation c = newConversation(ALICE);
         conversationService.appendUserMessage(c.getId(), "帮我看看成绩");
-        conversationService.appendAssistantMessage(c.getId(), "   ");
+        conversationService.appendAssistantMessage(c.getId(), "   ", List.of());
 
         List<AiMessage> rows = messageMapper.listByConversation(c.getId());
         assertEquals(1, rows.size(), "空白正文不该落库（否则历史里全是空轮次）");
         assertEquals(MessageType.USER, chatMemory.get(c.getId()).get(0).getMessageType());
+    }
+
+    /**
+     * **来源随消息落库**（M3 来源卡片持久化）：刷新历史会话时卡片必须还在。
+     *
+     * <p>这条踩过坑：出处最初只作为 SSE 事件推给前端，落库时已经拿不到了——
+     * 于是"刚问完有卡片、刷新就没了"。断言里既查库里的原始 JSON（写入确实发生），
+     * 也查接口返回的解析结果（形状对得上），两头都盯住。
+     */
+    @Test
+    void assistantSourcesArePersistedWithTheMessage() {
+        AiConversation c = newConversation(ALICE);
+        Map<String, Object> source = new LinkedHashMap<>();
+        source.put("docId", "03");
+        source.put("docTitle", "重修与补考办法");
+        source.put("section", "3. 补考");
+        source.put("citation", "重修与补考办法 3. 补考");
+
+        conversationService.appendUserMessage(c.getId(), "补考通过以后绩点怎么算");
+        conversationService.appendAssistantMessage(c.getId(), "按 60 分记载。", List.of(source));
+
+        List<AiMessage> rows = messageMapper.listByConversation(c.getId());
+        AiMessage assistant = rows.get(rows.size() - 1);
+        assertEquals(AiMessage.ROLE_ASSISTANT, assistant.getRole());
+        assertTrue(assistant.getSourcesJson() != null
+                        && assistant.getSourcesJson().contains("重修与补考办法 3. 补考"),
+                "出处必须落库，否则刷新后卡片消失：" + assistant.getSourcesJson());
+        assertEquals(List.of(source), SourceJson.parse(assistant.getSourcesJson()),
+                "落库再解析回来应与写入时逐字段一致（字段名漂移会让前端静默不显示）");
+    }
+
+    /** 没有出处的消息：库里是 NULL（而不是 "[]"），且解析回来是空列表而不是 null */
+    @Test
+    void messagesWithoutSourcesStoreNullAndParseToEmptyList() {
+        AiConversation c = newConversation(ALICE);
+        appendTurn(c, "我绩点多少", "3.88");
+
+        AiMessage assistant = messageMapper.listByConversation(c.getId()).get(1);
+        assertNull(assistant.getSourcesJson(),
+                "无出处应存 NULL：'没有来源'与'来源为空数组'不必区分，但 NULL 一眼可辨");
+        assertTrue(SourceJson.parse(assistant.getSourcesJson()).isEmpty());
+        assertTrue(SourceJson.parse("这不是 JSON").isEmpty(), "脏数据不能让历史接口 500");
+        assertTrue(SourceJson.parse(null).isEmpty());
+        assertNull(SourceJson.write(List.of()), "空列表不该写成 '[]'（保持与老数据一致的 NULL 语义）");
     }
 
     @Test

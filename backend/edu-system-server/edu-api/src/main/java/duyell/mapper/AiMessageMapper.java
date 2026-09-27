@@ -18,8 +18,8 @@ import java.util.List;
 @Mapper
 public interface AiMessageMapper {
 
-    @Insert("insert into ai_message(conversation_id, role, content) "
-            + "values(#{conversationId}, #{role}, #{content})")
+    @Insert("insert into ai_message(conversation_id, role, content, sources_json) "
+            + "values(#{conversationId}, #{role}, #{content}, #{sourcesJson})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     void add(AiMessage message);
 

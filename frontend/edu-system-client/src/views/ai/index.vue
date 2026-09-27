@@ -117,7 +117,14 @@ const loadConversation = async (id: string) => {
   replaceMessages(
     detail.messages
       .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .map<ChatMsg>((m) => ({ role: m.role, type: 'text', content: m.content })),
+      .map<ChatMsg>((m) => ({
+        role: m.role,
+        type: 'text',
+        content: m.content,
+        // 来源与正文一起落库，所以历史会话也要把卡片还原出来（只带来源、不带空数组，
+        // 免得每条消息都渲染一个空卡片区域）
+        sources: m.sources && m.sources.length > 0 ? m.sources : undefined,
+      })),
   )
 }
 

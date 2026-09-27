@@ -704,6 +704,13 @@ export interface AiMessage {
   conversationId: string
   role: 'user' | 'assistant'
   content: string
+  /**
+   * M3：该条回答的引用来源（来源卡片）。
+   *
+   * 与正文一起落库，因此**刷新/切回历史会话时卡片仍在**——早期版本只把来源当一次性 SSE
+   * 事件推给前端，刷新即丢（看起来像功能坏了）。`[]` 表示当时没有记录到依据。
+   */
+  sources?: PolicySource[]
   createTime: string
 }
 

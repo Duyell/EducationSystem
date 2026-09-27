@@ -10,6 +10,7 @@ import duyell.ai.limit.AgentRateLimiter;
 import duyell.ai.runtime.AgentEvent;
 import duyell.ai.runtime.AgentEventPublisher;
 import duyell.ai.runtime.AgentRuntime;
+import duyell.ai.runtime.SourceCapturingPublisher;
 import duyell.ai.runtime.SseAgentEventPublisher;
 import duyell.service.ConversationService;
 import lombok.RequiredArgsConstructor;
@@ -269,7 +270,9 @@ public class AiChatService {
      */
     private void processChat(String message, String userId, String role, String requestedConversationId,
                              SseEmitter emitter, String[] awaitingConfirmId) throws Exception {
-        AgentEventPublisher events = new SseAgentEventPublisher(emitter);
+        // 出口外面再套一层"抄来源"的装饰器：运行时跑完后流已发完，出处只剩在流里，
+        // 不抄这一份就没法把它和正文一起落库（那样刷新历史会话时来源卡片会消失）
+        SourceCapturingPublisher events = new SourceCapturingPublisher(new SseAgentEventPublisher(emitter));
 
         // Select system prompt by role
         String systemPrompt = switch (role) {
@@ -300,7 +303,9 @@ public class AiChatService {
                 events);
 
         if (outcome.answerText() != null && !outcome.answerText().isBlank()) {
-            conversationService.appendAssistantMessage(conversation.getId(), outcome.answerText());
+            // 出处与正文一起落库：来源卡片刷新后仍在（此前只推事件，刷新即丢）
+            conversationService.appendAssistantMessage(conversation.getId(), outcome.answerText(),
+                    events.lastSources());
         } else {
             // 本轮没有可见正文（例如模型只调了工具）：不留空消息，否则历史里全是空轮次
             log.debug("本轮无可见正文，不落库助手消息: conversation={}, stopReason={}",

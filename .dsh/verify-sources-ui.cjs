@@ -31,10 +31,12 @@ const SHOT = path.join(__dirname, 'verify-sources-ui.png')
 
 /// A policy question: must trigger the server-side forced retrieval (route-level RAG).
 const QUESTION = '补考通过以后绩点怎么算'
-/// How long to wait for the model to finish answering. Measured on this machine: ~70 s warm
-/// for this question (3 clauses injected + a few sentences of answer). The first request after
-/// a backend restart also pays Ollama's model load, so allow a lot of headroom.
-const ANSWER_TIMEOUT_MS = 300000
+/// How long to wait for the model to finish answering.
+/// Measured on this machine (Ollama qwen2.5:7b): ~22 s warm, but the FIRST request after a
+/// backend restart also pays loading both models (chat + embedding) into memory and has been
+/// measured at 260 s. So the budget is deliberately generous — a tight timeout here produces
+/// a confusing "no answer" failure that looks like a broken card.
+const ANSWER_TIMEOUT_MS = 480000
 
 let pass = 0
 let fail = 0
@@ -237,19 +239,25 @@ async function main() {
   await page.screenshot({ path: SHOT, fullPage: true }).catch(() => {})
 
   // ------------------------------------------------------------------
-  phase('C. the card survives a full page reload (history replay, no SSE)')
+  phase('C. the card SURVIVES a full page reload (history replay, no SSE)')
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.waitForSelector('.message-bubble', { timeout: 20000 })
   await page.waitForTimeout(1500)
-  const afterReload = await page.locator('.sources-card').count()
-  // NOTE: sources are NOT persisted (they are a live stream artifact, not part of the stored
-  // message), so after a reload the card is expected to be absent. Asserting the *absence*
-  // documents the limitation instead of letting it surprise someone later.
-  check(
-    'after reload the card is gone (sources are not persisted with the message)',
-    afterReload === 0,
-    'cards=' + afterReload,
-  )
+  const reloadedCards = page.locator('.sources-card')
+  const afterReload = await reloadedCards.count()
+  // The card data is persisted with the message (ai_message.sources_json), so a reload —
+  // which replays history from GET /ai/conversations/{id}/messages and sees no SSE at all —
+  // must still show it. Before persistence existed this was 0, and the feature looked broken
+  // to anyone who refreshed.
+  check('the card is still there after reload (sources are persisted)', afterReload > 0, 'cards=' + afterReload)
+
+  if (afterReload > 0) {
+    const reloadedCitations = (await reloadedCards.last().locator('.source-text').allTextContents()).map(norm)
+    const reloadedHead = norm(await reloadedCards.last().locator('.sources-head').innerText())
+    console.log('    after reload: ' + reloadedHead + ' ' + JSON.stringify(reloadedCitations))
+    check('the reloaded card lists the same clauses', reloadedCitations.length > 0, JSON.stringify(reloadedCitations))
+    check('the reloaded head matches the card count', /依据\s*\d+\s*条制度条款/.test(reloadedHead), reloadedHead)
+  }
 
   // ------------------------------------------------------------------
   phase('D. health')

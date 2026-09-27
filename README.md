@@ -13,8 +13,8 @@
 
 | 维度 | 数字 / 事实 |
 |---|---|
-| 后端测试 | **300 项全绿**（0 失败，6 项依赖外部服务的用例默认跳过） |
-| 验证脚本 | **24 个**（`.dsh/`）：隐私与审计 40 项、工具面不变量 39 项、会话链路 25 项、会话 UI 34 项（真实 Chromium）、RAG 评测（检索指标 + 端到端忠实度） |
+| 后端测试 | **305 项全绿**（0 失败，6 项依赖外部服务的用例默认跳过） |
+| 验证脚本 | **25 个**（`.dsh/`）：隐私与审计 40 项、工具面不变量 39 项、会话链路 25 项、会话 UI 34 项（真实 Chromium）、来源卡片 UI 19 项（真实 Chromium）、RAG 评测（检索指标 + 端到端忠实度） |
 | Agent 工具 | **33 个**（学生 17 / 教师 7 / 管理员 9），全部为 Spring AI **声明式 `@Tool`**；RAG 开启时增加 1 个跨角色 `search_policy` |
 | 安全闸门 | 角色白名单 → 参数 Schema 校验 → 危险操作人工确认（HITL）→ 审计留痕；另有输出护栏、限流、幂等键 |
 | 多轮记忆 | 会话与消息落 MySQL；模型上下文取最近 N 条；前端会话侧栏（新建/切换/删除、`?conversationId=` 可分享可刷新） |
@@ -54,7 +54,8 @@
 - **制度问答（RAG）**：问"补考通过后绩点怎么算"会检索出条款并注明《重修与补考办法》3. 补考 等出处
 - **来源卡片**：回答下方列出本轮依据的条款（`JW-编号` + 文档名 + 章节）。出处走独立的
   `type=sources` 事件、只来自**服务端真实检索结果**，**不从模型正文里正则抠**（那正是会被编造的字段）；
-  工具检索与"服务端强制注入"两条路径都会推出来源
+  工具检索与"服务端强制注入"两条路径都会推出来源，且**出处随消息落库**
+  （`ai_message.sources_json`）——刷新页面或切回历史会话时卡片仍在
 
 ---
 
@@ -105,7 +106,7 @@
 | 后端 | Java 21、Spring Boot 3.5.16、MyBatis、PageHelper、JWT（jjwt 0.13）、Lombok |
 | 存储 | MySQL 8（业务）、Redis（登录态/限流）、PostgreSQL 16 + pgvector（向量） |
 | AI | **Spring AI 1.0.9** + 本地 **Ollama**（`qwen2.5:7b` 对话、`bge-m3` 嵌入）；也支持任何 OpenAI 兼容端点 |
-| 测试与验证 | JUnit 5、Playwright（会话 UI 实机验证）、24 个 `.dsh` 脚本 |
+| 测试与验证 | JUnit 5、Playwright（会话 UI 与来源卡片实机验证）、25 个 `.dsh` 脚本 |
 
 ---
 
@@ -184,7 +185,7 @@ node .dsh/eval-p5-tools.cjs --inventory-only   # 工具面不变量      期望 
 .\.dsh\verify-privacy.ps1                      # 隐私与审计        期望 40/40
 node .dsh/verify-m2-conversations.cjs --no-llm # 会话链路          期望 25/25
 node .dsh/eval-rag.cjs                         # RAG（需 AI_RAG_ENABLED=true）
-mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 300 项
+mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 305 项
 ```
 
 > 用容器编排也可以：`docker compose up -d --build`。**注意**该 compose 按 Docker 起 MySQL，
@@ -209,7 +210,7 @@ mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 
 │   ├── 教务业务扩展设计.md          # P1–P5 业务规则权威文档
 │   ├── policies/                  # 11 份制度文档（RAG 语料，也是业务规则的制度依据）
 │   └── sql/                       # 10 个幂等迁移脚本
-├── .dsh/                          # 24 个验证/评测脚本 + redis 配置 + 项目级技能
+├── .dsh/                          # 25 个验证/评测脚本 + redis 配置 + 项目级技能
 ├── edujwxt.sql / seed_data.sql    # 建表与演示数据
 └── docker-compose.yml             # 容器化编排（与本地原生开发路径不同，见已知限制）
 ```
@@ -226,6 +227,7 @@ mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 
 | 载荷组装代码有两份 | 手写工具注册器与声明式类各拼一份"给模型看的 JSON"（对照期取舍，删手写实现即消失） | 计划内 |
 | 无 LICENSE | 测试与脚本可跑，仓库暂未声明开源协议 | 待补 |
 | CI 覆盖有限 | GitHub Actions 已跑"起床 → 导入数据 → 全量测试 → 三个断言脚本"，但 **RAG 未纳入**（CI 容器里没有 pgvector + 本地 Ollama）；前端只做类型检查 | 待补（计划：加 pgvector service + 前端 `type-check` 步骤） |
+| 本机模型冷启动慢 | 后端重启后第一次提问要等 Ollama 装载对话与嵌入两个模型（实测单轮可达 260 秒）；预热一轮即可降到 ~20 秒 | 已知，非缺陷 |
 | `docker-compose.yml` 仍未实跑 | 已补齐 pgvector 服务与模型环境变量，但本机到 Docker Hub 不可达，**实测路径是"原生三库 + 本地 Ollama"** | 待核对 |
 | 示例演示数据会随时间老化 | `seed_data.sql` 里考试时间是导入那刻固化的绝对时间，跑考试相关演示前先执行 `docs/sql/2026-09-27-reanchor-demo-exam-dates.sql` | 已知，脚本已提供 |
 

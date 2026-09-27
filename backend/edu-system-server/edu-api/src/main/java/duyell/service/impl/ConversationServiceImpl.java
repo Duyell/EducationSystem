@@ -2,18 +2,18 @@ package duyell.service.impl;
 
 import com.duyell.AiConversation;
 import com.duyell.AiMessage;
+import duyell.ai.memory.ChatMemoryWithSources;
 import duyell.mapper.AiConversationMapper;
 import duyell.mapper.AiMessageMapper;
 import duyell.service.ConversationService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import utils.BusinessException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -24,9 +24,11 @@ import java.util.UUID;
  *   <li><b>归属校验在服务端</b>：会话 id 是 UUID 且会出现在前端 URL 与 SSE 事件里，
  *       天然可被修改。因此 {@link #requireOwned} 是所有按 id 读写的**唯一入口**，
  *       控制器不直接碰 mapper —— 只靠"前端只显示自己的列表"是挡不住改 id 的。</li>
- *   <li><b>消息只由一个地方写</b>：正文落库走 Spring AI 的 {@link ChatMemory}
- *       （底层是本项目的 {@code MybatisChatMemoryRepository}），
- *       服务层不自己写 insert，避免"框架写一份、业务再写一份"造成口径不一致。</li>
+ *   <li><b>消息只由一个地方写</b>：正文落库走 Spring AI 的
+ *       {@link org.springframework.ai.chat.memory.ChatMemory}（底层是本项目的
+ *       {@code MybatisChatMemory}），服务层不自己写 insert，避免"框架写一份、业务再写一份"
+ *       造成口径不一致。带出处的助手消息走 {@link ChatMemoryWithSources#addAssistant}，
+ *       它内部仍复用同一条写入路径。</li>
  *   <li><b>标题用首条用户消息生成</b>：会话列表里"新对话 / 新对话 / 新对话"没有任何信息量；
  *       只在标题还是默认值时改写，不覆盖用户/前端后来设过的标题。</li>
  * </ol>
@@ -45,11 +47,11 @@ public class ConversationServiceImpl implements ConversationService {
 
     private final AiConversationMapper conversationMapper;
     private final AiMessageMapper messageMapper;
-    private final ChatMemory chatMemory;
+    private final ChatMemoryWithSources chatMemory;
 
     public ConversationServiceImpl(AiConversationMapper conversationMapper,
                                    AiMessageMapper messageMapper,
-                                   ChatMemory chatMemory) {
+                                   ChatMemoryWithSources chatMemory) {
         this.conversationMapper = conversationMapper;
         this.messageMapper = messageMapper;
         this.chatMemory = chatMemory;
@@ -123,13 +125,16 @@ public class ConversationServiceImpl implements ConversationService {
     }
 
     @Override
-    public void appendAssistantMessage(String conversationId, String content) {
+    public void appendAssistantMessage(String conversationId, String content, List<Map<String, Object>> sources) {
         if (content == null || content.isBlank()) {
             // 本轮没有任何正文（例如模型只调了工具就结束）：不留空消息，
             // 否则历史里会出现空 assistant 轮次，下一轮拼接时是噪声。
+            // 注：正文为空时**连出处也不存**——没有回答的"依据"没有意义，
+            // 而且底部的来源卡片无处可挂。
             return;
         }
-        chatMemory.add(conversationId, List.of(new AssistantMessage(content)));
+        // 走带出处的写入入口（同一条落库路径，见 ChatMemoryWithSources 注释）
+        chatMemory.addAssistant(conversationId, content, sources);
     }
 
     /** 会话还没有真正的标题时，用首条用户消息的前若干字取名 */

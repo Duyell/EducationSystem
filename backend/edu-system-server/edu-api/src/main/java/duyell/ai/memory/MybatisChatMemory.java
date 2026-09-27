@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -58,7 +59,7 @@ import java.util.Objects;
  */
 @Slf4j
 @Component
-public class MybatisChatMemory implements ChatMemory {
+public class MybatisChatMemory implements ChatMemoryWithSources {
 
     private final AiMessageMapper messageMapper;
     private final AiConversationMapper conversationMapper;
@@ -100,6 +101,29 @@ public class MybatisChatMemory implements ChatMemory {
         }
         log.debug("会话记忆追加: conversation={}, 请求={} 条, 实际落库={} 条",
                 conversationId, messages.size(), saved);
+    }
+
+    /**
+     * 追加一条带出处的助手消息（来源卡片持久化）。
+     *
+     * <p>**复用 {@link #add} 那条写入路径**，不另写 insert：正文落库只有一个入口是本类的
+     * 核心约束（否则"框架写一份、业务再写一份"的口径不一致问题会立刻回来）。
+     * 差别只在写入前把出处序列化进 {@code sources_json}。
+     */
+    @Override
+    public void addAssistant(String conversationId, String content, List<Map<String, Object>> sources) {
+        if (conversationId == null || conversationId.isBlank() || content == null || content.isBlank()) {
+            return;
+        }
+        AiMessage row = new AiMessage();
+        row.setConversationId(conversationId);
+        row.setRole(AiMessage.ROLE_ASSISTANT);
+        row.setContent(content);
+        row.setSourcesJson(SourceJson.write(sources));
+        messageMapper.add(row);
+        conversationMapper.increaseMessageCount(conversationId);
+        log.debug("助手消息落库: conversation={}, 出处={} 条",
+                conversationId, sources == null ? 0 : sources.size());
     }
 
     @Override

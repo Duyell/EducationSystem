@@ -660,6 +660,7 @@ CREATE TABLE `ai_conversation`  (
 -- （窗口大小 ai.memory.max-messages，见 MybatisChatMemory 类注释：
 --  框架的 MessageWindowChatMemory 每轮保存整个窗口，落到本表会重复插入或丢历史）。
 -- 工具调用与工具结果的原始报文在 ai_tool_audit，两处各司其职。
+-- sources_json：来源卡片的出处（M3），随消息一起落库，刷新历史会话时卡片仍在。
 -- ----------------------------
 DROP TABLE IF EXISTS `ai_message`;
 CREATE TABLE `ai_message`  (
@@ -667,6 +668,7 @@ CREATE TABLE `ai_message`  (
   `conversation_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '所属会话',
   `role` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'user / assistant',
   `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '消息正文',
+  `sources_json` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '来源卡片出处（JSON 数组：docId/docTitle/section/citation）；仅 assistant 消息有值',
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_msg_conv`(`conversation_id` ASC, `id` ASC) USING BTREE
