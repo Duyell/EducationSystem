@@ -111,7 +111,7 @@ class AgentRuntimeTest {
     void setUpRuntime() {
         model = new ScriptedOpenAiClient(HttpClient.newHttpClient(), aiProperties, objectMapper);
         runtime = new AgentRuntime(model, toolRegistry, aiProperties, pendingActionStore,
-                confirmationGate, auditService, toolArgumentValidator, objectMapper);
+                confirmationGate, auditService, toolArgumentValidator, objectMapper, null);
     }
 
     /** 模型桩：按"第几轮"播放脚本，每轮要么吐文本、要么发工具调用 */
@@ -255,6 +255,61 @@ class AgentRuntimeTest {
         decider.start();
     }
 
+    /**
+     * **路由级强制检索的接线证据**：条款必须在**第一次调用模型之前**注入系统提示词。
+     *
+     * <p>为什么这条必须有：7B 在制度类问题上会跳过检索工具、甚至假装查过后编造文件名。
+     * 靠提示词约束不可靠，所以改成服务端注入；而"注入有没有真的发生在模型之前"
+     * 无法从代码意图看出来，只能断言模型实际收到的 system 消息。
+     */
+    @Test
+    void augmentedPolicyContextIsInjectedBeforeTheModelSeesTheQuestion() throws Exception {
+        model.reset();
+        model.script((onToken, onToolCalls) -> charByChar(onToken).accept("依据条款，按 60 分计。"));
+        RecordingPublisher events = new RecordingPublisher();
+        AgentRuntime runtimeWithContext = new AgentRuntime(model, toolRegistry, aiProperties, pendingActionStore,
+                confirmationGate, auditService, toolArgumentValidator, objectMapper,
+                providerOf(message -> "【制度库检索结果】MARKER-真实条款"));
+
+        runtimeWithContext.run(request("补考通过以后绩点怎么算"), events);
+
+        String systemMessage = model.historySeenByModel.get(0).get(0).getContent();
+        assertTrue(systemMessage.contains("MARKER-真实条款"),
+                "条款必须在第一次调用模型前注入 system 提示词：" + systemMessage);
+        assertTrue(events.allText().contains("自动检索"),
+                "注入要发可见状态，避免以后被误认为「模型自己检索了」：" + events.allText());
+    }
+
+    /** 没有增强器（RAG 关闭）时行为与以前完全一致：不多注入任何东西 */
+    @Test
+    void withoutAugmenterNothingIsInjected() throws Exception {
+        model.reset();
+        model.script((onToken, onToolCalls) -> charByChar(onToken).accept("好的"));
+        RecordingPublisher events = new RecordingPublisher();
+
+        runtime.run(request("补考通过以后绩点怎么算"), events);
+
+        String systemMessage = model.historySeenByModel.get(0).get(0).getContent();
+        assertEquals(SYSTEM_PROMPT, systemMessage, "无增强器时 system 提示词应原样传下去");
+        assertFalse(events.allText().contains("自动检索"));
+    }
+
+    /** 造一个只返回给定增强器的 ObjectProvider（运行时把它当可选依赖） */
+    private static org.springframework.beans.factory.ObjectProvider<ContextAugmenter> providerOf(
+            ContextAugmenter augmenter) {
+        return new org.springframework.beans.factory.ObjectProvider<>() {
+            @Override
+            public ContextAugmenter getObject() {
+                return augmenter;
+            }
+
+            @Override
+            public ContextAugmenter getObject(Object... args) {
+                return augmenter;
+            }
+        };
+    }
+
     @Test
     void plainAnswerStreamsTokensAndEndsWithDone() throws Exception {
         model.reset();
@@ -388,3 +443,4 @@ class AgentRuntimeTest {
         assertTrue(outcome.answerText().contains("权限"), "后续作答也要保留：" + outcome.answerText());
     }
 }
+

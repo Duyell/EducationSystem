@@ -169,9 +169,14 @@ const ANSWER_CASES = [
     const events = await streamChat(token, c.q);
     const text = events.filter((e) => e.type === 'token').map((e) => e.content).join('');
     const tools = events.filter((e) => e.tool).map((e) => e.tool);
-    const calledSearch = tools.includes('search_policy') || events.some((e) => (e.content || '').includes('查询教务制度'));
+    // 现在检索**由服务端强制注入**（路由级），因此两种都算"检索发生了"：
+    //   ① 模型自己调了 search_policy；② 服务端发出"系统已自动检索制度条款"状态
+    const calledSearch = tools.includes('search_policy')
+      || events.some((e) => (e.content || '').includes('系统已自动检索制度条款'))
+      || events.some((e) => (e.content || '').includes('查询教务制度'));
 
-    softCheck(`「${c.q.slice(0, 12)}…」模型调用了 search_policy`, calledSearch, JSON.stringify([...new Set(tools)]));
+    softCheck(`「${c.q.slice(0, 12)}…」本轮发生了制度检索（模型调用或服务端强制注入）`,
+      calledSearch, JSON.stringify([...new Set(tools)]));
     softCheck(`回答里带条款事实「${c.keyword}」`, text.includes(c.keyword), text.slice(0, 160).replace(/\n/g, ' '));
     softCheck('回答里注明了来源（文档名/章节）',
       c.citeAny.some((name) => text.includes(name)),

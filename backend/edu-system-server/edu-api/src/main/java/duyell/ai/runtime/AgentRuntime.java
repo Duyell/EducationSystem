@@ -16,6 +16,7 @@ import duyell.ai.tool.ToolExecutionResult;
 import duyell.ai.tool.ToolRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -57,6 +58,15 @@ public class AgentRuntime {
     private final AiAuditService auditService;
     private final ToolArgumentValidator toolArgumentValidator;
     private final ObjectMapper objectMapper;
+
+    /**
+     * 可选的上下文增强（当前实现是 M3 的"制度问题强制检索"）。
+     *
+     * <p>用 {@link ObjectProvider} 而不是直接注入：RAG 关闭时容器里根本没有实现类，
+     * 运行时也不能因此起不来——它是**扩展点**，不是必需依赖。
+     * 测试里手工构造运行时时传 {@code null} 表示"无增强"。
+     */
+    private final ObjectProvider<ContextAugmenter> contextAugmenters;
 
     /**
      * 本轮请求：谁、什么角色、什么提示词、带哪些历史、问了什么。
@@ -106,7 +116,10 @@ public class AgentRuntime {
         String role = request.role();
 
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.builder().role("system").content(request.systemPrompt()).build());
+        // ①' 服务端**主动**补上下文（M3：识别到制度意图就先把真实条款检索出来注入系统提示词）。
+        //     顺序很关键：必须在第一次调用模型**之前**注入，模型才不会"先凭常识答完、再假装查过"。
+        String systemPrompt = withAugmentedContext(request.systemPrompt(), request.userMessage(), events);
+        messages.add(ChatMessage.builder().role("system").content(systemPrompt).build());
         if (request.history() != null) {
             messages.addAll(request.history());
         }
@@ -322,6 +335,36 @@ public class AgentRuntime {
     }
 
     /**
+     * 把扩展点返回的上下文追加到系统提示词后面。
+     *
+     * <p>刻意**复用同一条 system 消息**而不是再插一条：不同模型服务对"多条 system 消息"的支持不一致，
+     * 追加是最稳的写法；而且模型看到的仍是一份完整指令 + 依据。
+     *
+     * <p>增强动作会发一条 STATUS 事件（内容里写明"系统已自动检索"），
+     * 这样前端与评测脚本能区分"模型自己调了工具"与"服务端强制注入了条款"——
+     * 两者都要可见，否则以后排查会误以为是模型行为。
+     */
+    private String withAugmentedContext(String systemPrompt, String userMessage, AgentEventPublisher events) {
+        ContextAugmenter augmenter = contextAugmenters == null ? null : contextAugmenters.getIfAvailable();
+        if (augmenter == null) {
+            return systemPrompt;
+        }
+        String extra;
+        try {
+            extra = augmenter.augmentFor(userMessage);
+        } catch (Exception e) {
+            // 扩展点自己也不该抛；万一抛了，绝不能让整轮对话失败
+            log.warn("上下文增强失败，已忽略（本轮不带附加上下文）: {}", e.getMessage());
+            return systemPrompt;
+        }
+        if (extra == null || extra.isBlank()) {
+            return systemPrompt;
+        }
+        events.publish(AgentEvent.status("📚 系统已自动检索制度条款并注入上下文（无需模型自行检索）"));
+        return systemPrompt + "\n\n" + extra;
+    }
+
+    /**
      * 挂起等待用户确认危险操作。
      *
      * @return 用户确认时返回工具执行结果；取消/超时/失效时返回未批准
@@ -414,3 +457,4 @@ public class AgentRuntime {
                 ? toolDef.displayName() : toolDef.name();
     }
 }
+
