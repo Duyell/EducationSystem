@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -328,6 +329,9 @@ public class AgentRuntime {
                             parsedArgs, result,
                             failed ? AuditStatus.FAILED : AuditStatus.SUCCESS,
                             exec.errorDetail(), null, exec.durationMs());
+                    if (!failed) {
+                        publishSourcesIfAny(result, events);
+                    }
                 }
 
                 messages.add(ChatMessage.builder()
@@ -374,6 +378,47 @@ public class AgentRuntime {
         }
         events.publish(AgentEvent.status("📚 系统已自动检索制度条款并注入上下文（无需模型自行检索）"));
         return systemPrompt + "\n\n" + extra;
+    }
+
+    /**
+     * 工具结果里若带引用来源，就推一条 {@link AgentEventType#SOURCES} 事件（M3 来源卡片的数据来源）。
+     *
+     * <p><b>约定</b>：任何工具只要返回 {@code {"results":[{"citation": "...", ...}]}} 形状，
+     * 其 {@code citation} 就会被当作"本轮回答的出处"推给前端。这样运行时**不需要知道 RAG 的存在**
+     * （分层不倒挂），而检索类工具天然满足该形状。
+     *
+     * <p>解析失败只记 debug：来源是**附加信息**，取不到不该影响回答本身。
+     */
+    private void publishSourcesIfAny(String toolResultJson, AgentEventPublisher events) {
+        if (toolResultJson == null || toolResultJson.isBlank() || !toolResultJson.contains("\"citation\"")) {
+            return;
+        }
+        try {
+            Map<String, Object> payload = objectMapper.readValue(toolResultJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                    });
+            Object resultsNode = payload.get("results");
+            if (!(resultsNode instanceof List<?> results)) {
+                return;
+            }
+            List<Map<String, Object>> sources = new ArrayList<>();
+            for (Object item : results) {
+                if (!(item instanceof Map<?, ?> map) || map.get("citation") == null) {
+                    continue;
+                }
+                Map<String, Object> source = new LinkedHashMap<>();
+                source.put("docId", map.get("docId"));
+                source.put("docTitle", map.get("docTitle"));
+                source.put("section", map.get("section"));
+                source.put("citation", map.get("citation"));
+                sources.add(source);
+            }
+            if (!sources.isEmpty()) {
+                events.publish(AgentEvent.sources(sources));
+            }
+        } catch (Exception e) {
+            log.debug("工具结果里的来源解析失败（不影响回答）: {}", e.getMessage());
+        }
     }
 
     /**
@@ -469,4 +514,5 @@ public class AgentRuntime {
                 ? toolDef.displayName() : toolDef.name();
     }
 }
+
 

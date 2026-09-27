@@ -27,6 +27,14 @@ public enum AgentEventType {
     CONFIRM_RESULT,
     /** 错误（越权工具、模型服务报错、会话不可用…） */
     ERROR,
+    /**
+     * 本轮回答的**引用来源**（文档名 + 章节）。
+     *
+     * <p>为什么单独占一个事件而不是塞进 status：来源是**结构化数据**（前端要渲染来源卡片、
+     * 后续还要能点击定位），混在状态文案里只能靠正则解析；而"回答有据可依"正是 RAG 的核心卖点，
+     * 值得在协议里占一格。载荷放在 {@code args.sources}（见 {@code AgentEvent.sources}）。
+     */
+    SOURCES,
     /** 本轮结束（服务端已收尾，前端可解除 loading） */
     DONE;
 

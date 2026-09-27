@@ -10,6 +10,8 @@ import duyell.ai.confirm.PendingActionStore;
 import duyell.ai.dto.ChatMessage;
 import duyell.ai.service.OpenAiClient;
 import duyell.ai.tool.ToolArgumentValidator;
+import duyell.ai.tool.RiskLevel;
+import duyell.ai.tool.ToolDefinition;
 import duyell.ai.tool.ToolRegistry;
 import duyell.mapper.AiToolAuditMapper;
 import duyell.mapper.CourseMapper;
@@ -336,6 +338,46 @@ class AgentRuntimeTest {
         assertTrue(events.allText().contains("重试"), "重试要对用户可见（否则排查时像凭空多了一轮）：" + events.allText());
     }
 
+    /**
+     * **来源事件**：工具结果里带 `results[].citation` 时，必须推一条 `sources` 事件给前端。
+     *
+     * <p>这条是 M3"来源卡片"的数据前提：`citation` 原本只在工具返回值里（给模型看的），
+     * 前端拿不到；没有这条事件，前端就只能靠正则去解析模型正文——那正是我们一直避免的做法。
+     */
+    @Test
+    void toolResultWithCitationsEmitsSourcesEvent() throws Exception {
+        model.reset();
+        // 用一个**临时注册表**放一个"返回带出处结果"的假工具：本用例只验证运行时的事件转发，
+        // 不需要真的 RAG（也不需要向量库/嵌入模型）
+        ToolRegistry scratch = new ToolRegistry();
+        scratch.register("student", new ToolDefinition("fake_policy_search",
+                "假检索", "仅测试用",
+                Map.of("type", "object", "properties", Map.of()),
+                RiskLevel.READ_ONLY,
+                (args, userId, role) -> "{\"found\":true,\"results\":[{\"docId\":\"03\","
+                        + "\"docTitle\":\"重修与补考办法\",\"section\":\"3. 补考\","
+                        + "\"citation\":\"重修与补考办法 3. 补考\"}]}"));
+        AgentRuntime scratchRuntime = new AgentRuntime(model, scratch, aiProperties, pendingActionStore,
+                confirmationGate, auditService, toolArgumentValidator, objectMapper, null);
+
+        model.script((onToken, onToolCalls) ->
+                onToolCalls.accept(List.of(toolCall("call-1", "fake_policy_search", "{}"))));
+        model.script((onToken, onToolCalls) -> charByChar(onToken).accept("按 60 分计。"));
+        RecordingPublisher events = new RecordingPublisher();
+
+        scratchRuntime.run(AgentRuntime.Request.of(STUDENT, STUDENT_ROLE, SYSTEM_PROMPT, List.of(), "补考怎么算"), events);
+
+        AgentEvent sourcesEvent = events.first(AgentEventType.SOURCES);
+        assertNotNull(sourcesEvent, "带出处的工具结果必须推出 sources 事件：" + events.types());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> sources =
+                (List<Map<String, Object>>) sourcesEvent.args().get("sources");
+        assertEquals(1, sources.size());
+        assertEquals("重修与补考办法 3. 补考", sources.get(0).get("citation"));
+        assertEquals("03", sources.get(0).get("docId"));
+        assertEquals("3. 补考", sources.get(0).get("section"), "章节要带出来，来源卡片才显示得清楚");
+    }
+
     @Test
     void plainAnswerStreamsTokensAndEndsWithDone() throws Exception {
         model.reset();
@@ -469,4 +511,6 @@ class AgentRuntimeTest {
         assertTrue(outcome.answerText().contains("权限"), "后续作答也要保留：" + outcome.answerText());
     }
 }
+
+
 

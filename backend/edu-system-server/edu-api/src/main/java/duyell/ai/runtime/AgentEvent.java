@@ -77,6 +77,20 @@ public record AgentEvent(
         return new AgentEvent(AgentEventType.ERROR, content, tool, null, null, null, null, null, null, null, null);
     }
 
+    /**
+     * 引用来源事件（M3 来源卡片）。
+     *
+     * <p>载荷放在 {@code args.sources} 里：{@code args} 本就是"结构化载荷"位，
+     * 借它就不用改动 record 的 11 个组件与全部工厂方法——**线协议上就是 `args.sources`**，
+     * 前端按 {@code type === 'sources'} 取即可。
+     *
+     * @param sources 每项形如 {@code {docId, docTitle, section, citation}}（至少要有 citation）
+     */
+    public static AgentEvent sources(java.util.List<Map<String, Object>> sources) {
+        return new AgentEvent(AgentEventType.SOURCES, null, null, null, null, null, null,
+                Map.of("sources", sources), null, null, null);
+    }
+
     public static AgentEvent done() {
         return new AgentEvent(AgentEventType.DONE, null, null, null, null, null, null, null, null, null, null);
     }
