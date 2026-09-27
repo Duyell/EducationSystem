@@ -1,5 +1,6 @@
 package duyell.ai.rag;
 
+import duyell.ai.runtime.AugmentedContext;
 import duyell.ai.runtime.ContextAugmenter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -7,7 +8,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -63,37 +67,56 @@ public class PolicyContextAugmenter implements ContextAugmenter {
     }
 
     @Override
-    public String augmentFor(String userMessage) {
+    public AugmentedContext augmentFor(String userMessage) {
         if (!StringUtils.hasText(userMessage) || !looksLikePolicyQuestion(userMessage)) {
-            return null;
+            return AugmentedContext.NONE;
         }
         try {
             List<PolicySearchService.PolicyHit> hits = policySearchService.search(userMessage, null, augmentTopK);
             if (hits.isEmpty()) {
                 // 检索不到也要**明确告诉模型"没有依据"**：否则它又会用常识补一段出来
                 log.info("制度意图识别命中但未召回条款，注入『无依据』提示: query={}", userMessage);
-                return """
+                return AugmentedContext.textOnly("""
                         【制度库检索结果】系统已按你的问题检索校内制度库，**没有找到相关条款**。
                         因此：如果这个问题属于学校制度/规定范畴，请如实回答"制度库里没有找到相关条款"，
-                        **不要**用常识推测、**不要**引用任何文件名或条款号；其余问题正常回答。""";
+                        **不要**用常识推测、**不要**引用任何文件名或条款号；其余问题正常回答。""");
             }
             StringBuilder builder = new StringBuilder();
             builder.append("【制度库检索结果】系统已按用户问题检索校内制度库，以下为命中的**真实条款**")
                     .append("（共 ").append(hits.size()).append(" 条）。\n")
                     .append("回答制度类问题时：**必须只依据下面这些条款**，并注明出处（文档名 + 章节）；")
                     .append("**不得**引用下面没有出现的文件名或条款号。\n\n");
+            List<Map<String, Object>> sources = new ArrayList<>();
             int index = 1;
             for (PolicySearchService.PolicyHit hit : hits) {
                 builder.append(index++).append(". 【").append(hit.citation()).append("】\n")
                         .append(hit.text()).append("\n\n");
+                sources.add(toSource(hit));
             }
             log.info("制度意图识别命中，已注入条款: query={}, 条数={}", userMessage, hits.size());
-            return builder.toString().trim();
+            // 出处一并带出去：这条链路是"服务端替模型检索"，用户看不到工具调用事件，
+            // 若还不出来源卡片，界面上就和"模型凭空作答"完全一样了
+            return new AugmentedContext(builder.toString().trim(), sources);
         } catch (Exception e) {
             // 增强失败绝不能让对话失败：少一份依据可以接受，报错页不可以
             log.warn("制度条款注入失败（本次对话将不带制度依据）: query={}, 原因={}", userMessage, e.getMessage());
-            return null;
+            return AugmentedContext.NONE;
         }
+    }
+
+    /**
+     * 条款 → 来源卡片的载荷。
+     *
+     * <p>字段名与工具结果（{@code search_policy}）**逐字一致**，且顺序固定（LinkedHashMap）：
+     * 前端两种来源共用一套渲染逻辑，字段名漂移就会静默不显示。
+     */
+    private static Map<String, Object> toSource(PolicySearchService.PolicyHit hit) {
+        Map<String, Object> source = new LinkedHashMap<>();
+        source.put("docId", hit.docId());
+        source.put("docTitle", hit.docTitle());
+        source.put("section", hit.section());
+        source.put("citation", hit.citation());
+        return source;
     }
 
     /** 是否像在问制度（对判定口径不放心时，可直接用单测喂句子核对） */

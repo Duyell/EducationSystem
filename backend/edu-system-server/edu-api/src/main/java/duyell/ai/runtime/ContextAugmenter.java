@@ -18,11 +18,13 @@ package duyell.ai.runtime;
 public interface ContextAugmenter {
 
     /**
-     * 针对本轮用户问题，返回要追加到系统提示词后的上下文。
+     * 针对本轮用户问题，返回要追加到系统提示词后的上下文，以及可供界面展示的出处。
      *
-     * @return 需要注入的文本；**不需要注入时返回 {@code null} 或空白**
+     * @return 注入文本 + 出处；**不需要注入时返回 {@link AugmentedContext#NONE}**
+     * （早期版本返回 {@code String}，M3 收尾改成 record：注入的条款也要能显示来源卡片，
+     * 否则"服务端强制检索"这条链路对用户是隐形的）
      * @implNote 实现方**不得抛异常**：增强失败绝不能拖垮一次对话（顶多让这次回答少一份依据，
      * 而抛出去会让整个请求变成错误页）。实现方自己吞掉异常并记日志。
      */
-    String augmentFor(String userMessage);
+    AugmentedContext augmentFor(String userMessage);
 }

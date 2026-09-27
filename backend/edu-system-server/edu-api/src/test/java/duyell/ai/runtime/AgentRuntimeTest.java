@@ -271,7 +271,7 @@ class AgentRuntimeTest {
         RecordingPublisher events = new RecordingPublisher();
         AgentRuntime runtimeWithContext = new AgentRuntime(model, toolRegistry, aiProperties, pendingActionStore,
                 confirmationGate, auditService, toolArgumentValidator, objectMapper,
-                providerOf(message -> "【制度库检索结果】MARKER-真实条款"));
+                providerOf(message -> AugmentedContext.textOnly("【制度库检索结果】MARKER-真实条款")));
 
         runtimeWithContext.run(request("补考通过以后绩点怎么算"), events);
 
@@ -280,6 +280,38 @@ class AgentRuntimeTest {
                 "条款必须在第一次调用模型前注入 system 提示词：" + systemMessage);
         assertTrue(events.allText().contains("自动检索"),
                 "注入要发可见状态，避免以后被误认为「模型自己检索了」：" + events.allText());
+    }
+
+    /**
+     * **注入路径也要出来源卡片**（M3 收尾补齐）：服务端替模型检索时没有任何工具调用事件，
+     * 若再不带出处，界面上这段回答与"模型凭常识作答"完全无法区分——而它恰恰是唯一被保证过依据的回答。
+     */
+    @Test
+    void injectedPolicyClausesAlsoEmitSourcesEvent() throws Exception {
+        model.reset();
+        model.script((onToken, onToolCalls) -> charByChar(onToken).accept("依据条款，按 60 分计。"));
+        RecordingPublisher events = new RecordingPublisher();
+        List<Map<String, Object>> injected = List.of(Map.of(
+                "docId", "03",
+                "docTitle", "重修与补考办法",
+                "section", "3. 补考",
+                "citation", "重修与补考办法 3. 补考"));
+        AgentRuntime runtimeWithContext = new AgentRuntime(model, toolRegistry, aiProperties, pendingActionStore,
+                confirmationGate, auditService, toolArgumentValidator, objectMapper,
+                providerOf(message -> new AugmentedContext("【制度库检索结果】条款正文", injected)));
+
+        runtimeWithContext.run(request("补考通过以后绩点怎么算"), events);
+
+        AgentEvent sourcesEvent = events.first(AgentEventType.SOURCES);
+        assertNotNull(sourcesEvent, "注入的条款也必须带出处：" + events.types());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> sources =
+                (List<Map<String, Object>>) sourcesEvent.args().get("sources");
+        assertEquals("重修与补考办法 3. 补考", sources.get(0).get("citation"));
+        // 事件顺序：状态 → 来源 → ……（出处必须和"已自动检索"那条状态一起出现在正文之前）
+        assertTrue(events.types().indexOf(AgentEventType.SOURCES)
+                        < events.types().indexOf(AgentEventType.DONE),
+                "来源要随注入一起发出，而不是等到结束：" + events.types());
     }
 
     /** 没有增强器（RAG 关闭）时行为与以前完全一致：不多注入任何东西 */

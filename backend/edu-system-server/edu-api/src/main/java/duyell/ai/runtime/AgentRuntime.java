@@ -351,7 +351,7 @@ public class AgentRuntime {
     }
 
     /**
-     * 把扩展点返回的上下文追加到系统提示词后面。
+     * 把扩展点返回的上下文追加到系统提示词后面，并把出处推给前端。
      *
      * <p>刻意**复用同一条 system 消息**而不是再插一条：不同模型服务对"多条 system 消息"的支持不一致，
      * 追加是最稳的写法；而且模型看到的仍是一份完整指令 + 依据。
@@ -359,25 +359,31 @@ public class AgentRuntime {
      * <p>增强动作会发一条 STATUS 事件（内容里写明"系统已自动检索"），
      * 这样前端与评测脚本能区分"模型自己调了工具"与"服务端强制注入了条款"——
      * 两者都要可见，否则以后排查会误以为是模型行为。
+     *
+     * <p>若增强器同时给出了出处，还要**补一条 SOURCES 事件**：这条链路没有工具调用事件，
+     * 用户看不到任何"查过制度库"的痕迹，来源卡片是唯一的可见凭据。
      */
     private String withAugmentedContext(String systemPrompt, String userMessage, AgentEventPublisher events) {
         ContextAugmenter augmenter = contextAugmenters == null ? null : contextAugmenters.getIfAvailable();
         if (augmenter == null) {
             return systemPrompt;
         }
-        String extra;
+        AugmentedContext augmented;
         try {
-            extra = augmenter.augmentFor(userMessage);
+            augmented = augmenter.augmentFor(userMessage);
         } catch (Exception e) {
             // 扩展点自己也不该抛；万一抛了，绝不能让整轮对话失败
             log.warn("上下文增强失败，已忽略（本轮不带附加上下文）: {}", e.getMessage());
             return systemPrompt;
         }
-        if (extra == null || extra.isBlank()) {
+        if (augmented == null || !augmented.hasText()) {
             return systemPrompt;
         }
         events.publish(AgentEvent.status("📚 系统已自动检索制度条款并注入上下文（无需模型自行检索）"));
-        return systemPrompt + "\n\n" + extra;
+        if (!augmented.sources().isEmpty()) {
+            events.publish(AgentEvent.sources(augmented.sources()));
+        }
+        return systemPrompt + "\n\n" + augmented.text();
     }
 
     /**
