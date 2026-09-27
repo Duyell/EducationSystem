@@ -12,7 +12,7 @@
 # ASCII-only on purpose (Windows PowerShell 5.1 parses .ps1 as ANSI).
 $ErrorActionPreference = 'Continue'
 $base = 'http://localhost:8080'
-$mysql = 'D:\mysql-8.4.7-winx64\mysql-8.4.7-winx64\bin\mysql.exe'
+$mysql = if ($env:EDU_MYSQL_CLIENT) { $env:EDU_MYSQL_CLIENT } else { 'D:\mysql-8.4.7-winx64\mysql-8.4.7-winx64\bin\mysql.exe' }
 $pass = 0; $fail = 0
 
 # Chinese phrases built from code points: this file must stay ASCII-only (PS 5.1 parses .ps1 as ANSI,
@@ -176,3 +176,4 @@ Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host ("RESULT: PASS=" + $pass + "  FAIL=" + $fail) -ForegroundColor $(if ($fail -eq 0) { 'Green' } else { 'Red' })
 Write-Host "========================================" -ForegroundColor Cyan
 exit $(if ($fail -eq 0) { 0 } else { 1 })
+

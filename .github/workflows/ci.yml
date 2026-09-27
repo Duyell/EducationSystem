@@ -51,14 +51,17 @@ jobs:
           cache: maven
 
       # 测试夹具依赖种子数据（课程/学生/成绩/评价/考试…），必须先导入
+      # ⚠️ 必须显式给库名：edujwxt.sql 是 Navicat 导出的**纯 DDL**（没有 CREATE DATABASE / USE），
+      # 本地是 mysql -uroot -p 进去后先 use 库，CI 里没有这一步 ——
+      # 首次运行就在第 23 行（DROP TABLE IF EXISTS `clazz`）报 ERROR 1046 No database selected。
       - name: Import schema and seed data
         run: |
-          sudo apt-get install -y mysql-client >/dev/null
-          mysql -h 127.0.0.1 -uroot -p123456 < edujwxt.sql
+          sudo apt-get install -y mysql-client >/dev/null 2>&1 || true
+          mysql -h 127.0.0.1 -uroot -p123456 edujwxt < edujwxt.sql
           mysql -h 127.0.0.1 -uroot -p123456 edujwxt < seed_data.sql
           for f in docs/sql/*.sql; do
             echo ">> applying $f"
-            mysql -h 127.0.0.1 -uroot -p123456 < "$f" || true
+            mysql -h 127.0.0.1 -uroot -p123456 edujwxt < "$f" || true
           done
 
       # ① 后端全量测试（默认跳过需要真实模型的用例）
@@ -88,6 +91,8 @@ jobs:
 
       - name: Assertions — privacy & audit log (expect 40/40)
         shell: pwsh
+        env:
+          EDU_MYSQL_CLIENT: mysql
         run: ./.dsh/verify-privacy.ps1
 
       - name: Assertions — conversations (expect 25/25)
@@ -96,3 +101,5 @@ jobs:
       - name: Backend log on failure
         if: failure()
         run: tail -200 backend/edu-system-server/edu-api/target/backend.log || true
+
+
