@@ -310,6 +310,32 @@ class AgentRuntimeTest {
         };
     }
 
+    /**
+     * **空响应重试**：工具轮之后模型若一个字的正文都不产出，必须重试一次而不是就此收尾。
+     *
+     * <p>实测出现过：模型先说"根据学校教务制度文件，补考"就跑去调工具，工具结果回来后**不产出正文**，
+     * 用户只看到半句话。这条断言把它变成确定性用例（先工具、再空、最后正常作答）。
+     */
+    @Test
+    void emptyAnswerAfterToolRoundIsRetriedOnce() throws Exception {
+        model.reset();
+        Integer courseId = unselectedCourseId();
+        // 轮 1：调工具；轮 2：**空响应**（既不吐正文也不调工具）；轮 3：正常作答
+        model.script((onToken, onToolCalls) ->
+                onToolCalls.accept(List.of(toolCall("call-1", "get_my_courses", "{}"))));
+        model.script((onToken, onToolCalls) -> { /* 故意什么都不做：模拟空响应 */ });
+        model.script((onToken, onToolCalls) -> charByChar(onToken).accept("你选了 6 门课。"));
+        RecordingPublisher events = new RecordingPublisher();
+        decideWhenAsked(events, true);   // 该工具是只读的，不会等确认；这里只是防万一
+
+        AgentRuntime.Outcome outcome = runtime.run(request("我选了什么课"), events);
+
+        assertEquals("completed", outcome.stopReason());
+        assertEquals("你选了 6 门课。", outcome.answerText(), "空响应后重试应拿到正文，而不是就此收尾");
+        assertEquals(3, model.calls.get(), "应为：工具轮 + 空响应 + 重试成功 = 3 轮，实际=" + model.calls.get());
+        assertTrue(events.allText().contains("重试"), "重试要对用户可见（否则排查时像凭空多了一轮）：" + events.allText());
+    }
+
     @Test
     void plainAnswerStreamsTokensAndEndsWithDone() throws Exception {
         model.reset();

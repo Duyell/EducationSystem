@@ -1,0 +1,98 @@
+# CI：把"手工敲的验证命令"变成每次 push 自动跑的门禁
+#
+# 设计取舍（为什么长这样）：
+#   1. **只跑不依赖大模型的部分** —— 296 项后端测试 + 隐私 40 / 工具面 39 / 会话 25 三套断言。
+#      需要 Ollama 与真实模型的用例（-Dai.live=true、RAG 真机、会话 UI）在 CI 里没有模型可用，
+#      它们本来就默认跳过（gated by system property），这里不额外打开。
+#   2. **一个 job 顺序跑**，而不是拆成多个 job 并行：日志集中在一个地方，排查更方便
+#      （这个项目吃过"多处并发写同一个库互相干扰"的亏，见开发记录里批次迁移那几轮）。
+#   3. MySQL 用 service 容器，启动后**显式导入**建表与种子数据：测试里的夹具依赖种子数据，
+#      不导入就会出现一堆"课程表为空"式的失败。
+#   4. pgvector 也起容器但**不启用 RAG**：默认 `AI_RAG_ENABLED=false`，
+#      既证明"关掉 RAG 时应用完全不碰 PostgreSQL"，也让 CI 不依赖向量索引构建（省几分钟）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: 123456
+          MYSQL_DATABASE: edujwxt
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -p123456"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # 测试夹具依赖种子数据（课程/学生/成绩/评价/考试…），必须先导入
+      - name: Import schema and seed data
+        run: |
+          sudo apt-get install -y mysql-client >/dev/null
+          mysql -h 127.0.0.1 -uroot -p123456 < edujwxt.sql
+          mysql -h 127.0.0.1 -uroot -p123456 edujwxt < seed_data.sql
+          for f in docs/sql/*.sql; do
+            echo ">> applying $f"
+            mysql -h 127.0.0.1 -uroot -p123456 < "$f" || true
+          done
+
+      # ① 后端全量测试（默认跳过需要真实模型的用例）
+      - name: Backend tests (expect 296 passed, 6 skipped)
+        working-directory: backend/edu-system-server
+        run: mvn -B test -pl edu-api -am
+
+      # ② 起后端，跑三套**不依赖模型**的断言脚本
+      - name: Package backend
+        working-directory: backend/edu-system-server
+        run: mvn -B package -DskipTests -pl edu-api -am
+
+      - name: Start backend
+        working-directory: backend/edu-system-server/edu-api/target
+        run: |
+          nohup java -jar edu-api-0.0.1-SNAPSHOT.jar > backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://localhost:8080/login -X POST \
+                 -H 'Content-Type: application/json' -d '{"username":"2023001","password":"123456"}'; then
+              echo "backend up after ${i}s"; break
+            fi
+            sleep 1
+          done
+
+      - name: Assertions — tool surface (expect 39/39)
+        run: node .dsh/eval-p5-tools.cjs --inventory-only
+
+      - name: Assertions — privacy & audit log (expect 40/40)
+        shell: pwsh
+        run: ./.dsh/verify-privacy.ps1
+
+      - name: Assertions — conversations (expect 25/25)
+        run: node .dsh/verify-m2-conversations.cjs --no-llm
+
+      - name: Backend log on failure
+        if: failure()
+        run: tail -200 backend/edu-system-server/edu-api/target/backend.log || true

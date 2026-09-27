@@ -136,6 +136,9 @@ public class AgentRuntime {
         // 被输出护栏扣下的原始工具调用 JSON 不进记忆，否则模型会把自己上次的畸形输出再学一遍。
         StringBuilder answerText = new StringBuilder();
 
+        // 空响应是否已重试（只重试一次：模型若就是答不出来，别把它变成死循环）
+        boolean emptyResponseRetried = false;
+
         for (int iteration = 0; iteration < maxIterations; iteration++) {
             boolean[] toolCallsReceived = {false};
             List<ChatMessage.ToolCall> currentToolCalls = new ArrayList<>();
@@ -178,6 +181,15 @@ public class AgentRuntime {
                     if (!recovered.trailingText().isEmpty()) {
                         answerText.append(recovered.trailingText());
                         events.publish(AgentEvent.token(recovered.trailingText()));
+                    }
+                    // 空响应重试：工具轮（或服务端注入）之后，7B 偶发**一个字的正文都不产出**，
+                    // 于是用户只看到工具执行前那半句话就结束了（实测出现过："根据学校教务制度文件，补考"）。
+                    // 重试一次成本很低，而"答半句就收尾"是很明显的体验缺陷。
+                    if (answerText.length() == 0 && iteration > 0 && !emptyResponseRetried) {
+                        emptyResponseRetried = true;
+                        log.warn("模型本轮未产出任何正文，重试一次: user={}, iteration={}", userId, iteration);
+                        events.publish(AgentEvent.status("⚠️ 模型未产出正文，正在重试一次"));
+                        continue;
                     }
                     events.publish(AgentEvent.done());
                     events.complete();
