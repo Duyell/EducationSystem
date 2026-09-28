@@ -40,6 +40,8 @@ __screenshots__/
 # 成绩变更日志页的 UI 校验产物（诊断 json 与截图，每次运行重写）
 .dsh/verify-score-changelog-ui.diag.json
 .dsh/verify-score-changelog-ui.png
+# MCP 协议校验的诊断输出（每次运行重写；里面含工具清单与失败上下文，不入库）
+.dsh/verify-mcp.diag.json
 # 导入大小写审计脚本的输入（由 git ls-files 现生成）
 .dsh/tracked.txt
 # P5 评测的运行态产物：审计水位线（每次 -Mark 重写）与整次运行日志

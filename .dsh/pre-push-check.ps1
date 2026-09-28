@@ -66,7 +66,7 @@ Step 'backend tests (mvn -o test)' {
   Pop-Location
 
   if ($code -eq 0) {
-    Write-Host '  [PASS] backend tests (321 expected; see the summary line below)' -ForegroundColor Green
+    Write-Host '  [PASS] backend tests (324 expected; see the summary line below)' -ForegroundColor Green
     @($out) | Select-String -Pattern 'Tests run: [0-9]+, Failures' | Select-Object -Last 1 | ForEach-Object { Write-Host ('  | ' + $_.Line.Trim()) }
   } else {
     $script:failed += ("backend tests (mvn exit " + $code + ")")

@@ -28,6 +28,13 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * 评测脚本只看"模型选没选对工具"——**没有一处看过工具返回的数据**）。
  * 现在同一工具名在不同角色下是**两份独立定义**，互不可见；
  * 跨角色同名只记一条日志（这是合法用法，但值得在日志里留痕）。
+ *
+ * <p><b>工具定义的唯一来源是声明式那套</b>（{@code duyell.ai.tool.declarative}）：
+ * 33 个工具（RAG 开启时另有跨角色的 {@code search_policy}）全部由
+ * {@code @Tool} + 项目侧 {@code @ToolMeta}/{@code @ParamConstraint} 声明，
+ * 本类只负责"注册、按角色隔离、执行并留痕"。
+ * 迁移期曾并存一份手写实现（用"有意覆盖"接管一个版本周期），已于 2026-09-28 删除——
+ * 于是"给模型看的参数 Schema"只剩框架生成这一个来源，不再有两份需要保持一致的载荷。
  */
 @Component
 public class ToolRegistry {
@@ -40,35 +47,15 @@ public class ToolRegistry {
     private final Map<String, Set<String>> roleToolNames = new ConcurrentHashMap<>();
 
     public void register(String role, ToolDefinition tool) {
-        doRegister(role, tool, false);
-    }
-
-    /**
-     * 用新实现**有意覆盖**同一角色下的同名工具（声明式迁移用）。
-     *
-     * <p>与 {@link #register} 的唯一区别是日志语义：同一角色内重复注册通常是"两个注册器撞名"
-     * 的隐患，要 WARN；而这里覆盖是计划内的（声明式实现接管手写实现），
-     * 记 INFO 说明"谁接管了谁"，避免把一次正常迁移长期伪装成告警——告警一旦常见就没人看了。
-     */
-    public void registerOverride(String role, ToolDefinition tool) {
-        doRegister(role, tool, true);
-    }
-
-    private void doRegister(String role, ToolDefinition tool, boolean override) {
         Map<String, ToolDefinition> tools = roleTools.computeIfAbsent(role, k -> new ConcurrentHashMap<>());
         ToolDefinition previous = tools.put(tool.name(), tool);
         if (previous != null) {
-            if (override) {
-                log.info("角色 [{}] 的工具 [{}] 已由新实现接管：{} -> {}（旧实现仍在代码里，作回归对照）",
-                        role, tool.name(), previous.displayName(), tool.displayName());
-            } else {
-                log.warn("角色 [{}] 的工具 [{}] 被重复注册，后者覆盖前者（展示名: {} -> {}）。"
-                                + "请确认不是两个注册器起了同一个名字。",
-                        role, tool.name(), previous.displayName(), tool.displayName());
-            }
-        } else if (override) {
-            log.warn("工具 [{}]（角色 {}）没有可覆盖的旧实现，已直接注册——"
-                    + "说明声明式副本与手写副本的命名或角色对不上，请核对", tool.name(), role);
+            // 同一角色内重复注册 = 两个注册器撞名，注册顺序决定谁生效，必须告警。
+            // （迁移期这里曾有一条"有意覆盖"的 INFO 分支：声明式实现接管手写实现。
+            //   手写注册器已于 2026-09-28 删除，路径只剩声明式一个，那条分支随之消失。）
+            log.warn("角色 [{}] 的工具 [{}] 被重复注册，后者覆盖前者（展示名: {} -> {}）。"
+                            + "请确认不是两个注册器起了同一个名字。",
+                    role, tool.name(), previous.displayName(), tool.displayName());
         } else {
             warnIfNameUsedByOtherRole(role, tool);
         }

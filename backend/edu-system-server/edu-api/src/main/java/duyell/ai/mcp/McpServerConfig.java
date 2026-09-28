@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import duyell.ai.audit.AiAuditService;
 import duyell.ai.tool.ToolDefinition;
 import duyell.ai.tool.ToolRegistry;
+import duyell.ai.tool.declarative.DeclarativeToolRegistrar;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
@@ -86,6 +87,15 @@ public class McpServerConfig {
     public List<McpServerFeatures.SyncToolSpecification> mcpToolSpecifications(
             ToolRegistry toolRegistry,
             AiAuditService auditService,
+            // ⚠️ 这个形参**不是**用不到的装饰：本方法在 Bean 创建过程中就把工具清单**快照**下来
+            // （MCP SDK 的工具表在 server build 时固定），因此必须由依赖关系保证
+            // "声明式工具已经注册完毕"。否则装配出来的是**空工具面**——
+            // 迁移期这里曾侥幸拿到手写注册器先注册的工具（实测日志：MCP 装配在前、声明式注册在其后 1.6s），
+            // 手写实现删除后若不写这一行，MCP 就会静默暴露 0 个工具。
+            // 实测过：把这行删掉，McpToolFaceAssemblyTest 的"依赖边"断言立刻红
+            // （而"工具面非空"那条**仍然是绿的**——顺序碰巧对，所以只能断言依赖边本身）。
+            // 见 DeclarativeToolRegistrar 的类注释与 McpToolFaceAssemblyTest。
+            DeclarativeToolRegistrar declarativeToolRegistrar,
             @Value("${ai.mcp.role:student}") String role,
             @Value("${ai.mcp.allow-writes:false}") boolean allowWrites) {
 

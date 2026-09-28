@@ -57,7 +57,35 @@
 > **M3 收尾 ✅**（路由级强制检索、空响应重试、来源卡片 + 出处落库 + 实机验证），全部推送 `origin/main`。
 > 下一步：**① M5 评测/类型检查进 CI → ② M4（多智能体与 MCP）**。
 
-> ### ⏸ 最新暂停状态（2026-09-28 第十五轮 = **补上成绩变更日志页面**，把最后一条断链接起来）
+> ### ⏸ 最新暂停状态（2026-09-28 第十六轮 = **协议 / 文档收口 + 删掉手写工具注册器**）
+>
+> - **用户拍板**：① 协议用 **MIT**（已补 `LICENSE`）；② **RAG 不进 CI**（"不影响使用就算了"）；
+>   ③ MCP **按建议在 Cursor 里实机接一次**；④ **docker-compose 暂不实跑**（本机连不上 Docker Hub，
+>   说"或者等下你做完，我开一下代理试试"）；⑤ **删掉手写的 3 个工具注册器**（"按你的建议来"）。
+> - **本轮做的事**：按上面五条逐条落地。**其中第 ⑤ 条不是纯清理，而是修掉一个真缺陷**——
+>   动手前先看启动日志（这一步救了命）发现：`MCP 工具面已装配: 开放 14 个` 发生在
+>   `声明式工具注册完成: 共 17 个` **之前 1.6 秒**。也就是说内置 Agent 走声明式实现、
+>   而 **MCP 那 14 个工具一直跑着手写实现**（`mcpToolSpecifications` 在 Bean 创建期就把工具表快照走了）。
+>   删文件前若不管这件事，MCP 会静默暴露 **0 个工具**，而覆盖性测试照样全绿。
+>   修法：`DeclarativeToolRegistrar` 改回 `InitializingBean` +
+>   `mcpToolSpecifications` **显式依赖**它（把顺序从运气变成依赖），并新增
+>   `McpToolFaceAssemblyTest` 钉死这条不变量。**该断言强度已实测**：删掉依赖边 → 依赖断言红、
+>   而"工具面非空"断言仍然绿（顺序碰巧还对）。细节见 `docs/开发记录.md`（三十七）。
+> - **验证**：后端 **324 项**（0 失败，6 跳过）；`McpToolFaceAssemblyTest` 3/3、
+>   `McpToolBridgeTest` 9/9、`DeclarativeMigrationCoverageTest` 3/3、`DeclarativeToolMigrationTest` 8/8。
+>   手写实现 **-1,922 行**（学生 1185 / 教师 458 / 管理员 279）。
+> - **CI 现状（全绿，20 个步骤）**：导入数据 → 324 项后端测试 → 前端 `vue-tsc` → **前端单测 15 例**
+>   → 打包 → 假模型 → 后端 → **11 套断言**。
+> - **下次开工的待办（按价值排序）**：
+>   ① 若面试要讲容器化 → 开代理后真跑一次 `docker compose up -d --build`（**唯一从未实跑的东西**）；
+>   ② MCP 续（stdio 传输 / 按会话动态工具面）——属于加功能，需你点头；
+>   ③ RAG 进 CI **已决定不做**，不要再写"待补"。
+> - **本机环境**：同下面第十五轮那一节（MySQL80 / Redis / postgresql-x64-16 自启动；
+>   后端 8080 与 dev server 5173 按需起、收工即停；跑 RAG/真实模型要带
+>   `AI_RAG_ENABLED=true AI_BASE_URL=http://localhost:11434/v1 AI_MODEL=qwen2.5:7b AI_API_KEY=ollama`；
+>   试 MCP 再加 `AI_MCP_ENABLED=true`）。
+>
+> ### ⏸ 上一轮暂停状态（2026-09-28 第十五轮 = **补上成绩变更日志页面**，把最后一条断链接起来）
 >
 > - **用户拍板**：① 补页面算前端工作、有必要加 → **已补**；② RAG 进 CI "看着来"；
 >   ③ **首要保证 CI 不红**（避免频繁失败通知）。
@@ -602,7 +630,7 @@ npm run build-only            # 沙箱下需提权：Vite 配置加载会 child_
 | 1.1 新建 `edu-agent` 模块 | Maven 加 `edu-agent`（依赖 `edu-api` 的 Service/Mapper），AI 相关代码全部迁入；`edu-api` 只留业务 | `edu-agent/pom.xml` |
 | 1.2 接入 Spring AI | `spring-ai-bom` + `spring-ai-starter-model-openai` 指向 DeepSeek；`ChatClient` Bean 统一构建；保留 `OpenAiClient` 一个版本周期作为回归对照，之后删除 | `AgentConfig` |
 | 1.3 工具改造 | 21 个工具由 Lambda 改为**声明式 `@Tool` 方法**（`description` 写清"何时用/何时不用"），按角色拆成工具类：`StudentTools/TeacherTools/AdminTools`；入参用 record/DTO 让框架自动生成 JSON Schema | `tool/*.java` |
-| 1.3 工具改造 | **✅ 全部 33 个工具完成声明式迁移（2026-09-22）**：学生 17 / 教师 7 / 管理员 9，全部由 `@Tool` + 项目侧 `@ToolMeta`（补展示名与风险等级）+ `@ParamConstraint`（补框架表达不了的 enum/min/max）声明；手写实现保留作一个版本周期的回归对照（`registerOverride` 接管，删除后"两份载荷组装"的重复也随之消失）。覆盖闸门 `DeclarativeMigrationCoverageTest` 保证"注册集合 == 声明式集合"，专挡漏迁。⚠️ 迁移踩到的三个坑见开发记录 (二十一)(二十三)：`MethodToolCallback.Builder` 不推导定义；单个对象参数会被再套一层参数名；`@ToolParam.required` **默认 true**（可选参数必须显式 `required=false`，否则模型不带就被校验器拒掉） | `tool/declarative/` |
+| 1.3 工具改造 | **✅ 全部 33 个工具完成声明式迁移（2026-09-22）**：学生 17 / 教师 7 / 管理员 9，全部由 `@Tool` + 项目侧 `@ToolMeta`（补展示名与风险等级）+ `@ParamConstraint`（补框架表达不了的 enum/min/max）声明；手写实现保留了一个版本周期作回归对照（`registerOverride` 接管），**已于 2026-09-28 删除**（`-1,922 行`），"两份载荷组装"的重复随之消失——**删除时发现 MCP 工具面一直在跑手写实现**（装配期快照早于声明式注册），已改为显式依赖 + `McpToolFaceAssemblyTest` 钉死，见开发记录（三十七）。覆盖闸门 `DeclarativeMigrationCoverageTest` 保证"注册集合 == 声明式集合"，专挡漏迁。⚠️ 迁移踩到的三个坑见开发记录 (二十一)(二十三)：`MethodToolCallback.Builder` 不推导定义；单个对象参数会被再套一层参数名；`@ToolParam.required` **默认 true**（可选参数必须显式 `required=false`，否则模型不带就被校验器拒掉） | `tool/declarative/` |
 | 1.4 Agent 循环 | **🟡 编排抽离完成（2026-09-22，用户拍板方案 B）**：`AgentRuntime`（模型↔工具往复 + 四道闸门 + 输出护栏）+ `AgentEventPublisher`/`AgentEventType`（事件契约固定成枚举，生产走 SSE、测试用记录实现）；`AiChatService` 756 → 372 行，只剩 token/限流/会话/传输；助手正文落库从三处收敛为一处。**未换成框架 tool-calling 循环**：确认卡片要挂起线程、护栏要过滤输出、审计要留痕，重写成 Advisor 风险高于收益。**剩**：`AgentEventPublisher` 抽象出 `AgentEvent` 联合类型文档、断线重连（1.9） | `runtime/` |
 | 1.5 多轮记忆 | **✅ 已完成（2026-09-22）**：`ChatMemory` + **MySQL** 持久化（`ai_conversation`/`ai_message`）；窗口＝"取最近 N 条"（`ai.memory.max-messages`，默认 20）。⚠️ **未用**框架的 `MessageWindowChatMemory`：其 `saveAll` 是"替换整个会话"语义，落 MySQL 要么丢历史、要么消息翻倍（理由见开发记录 (十九)）；摘要压缩**暂不做**（7B 下性价比低，待上下文真正吃紧再加） | `MybatisChatMemory`、`ConversationService` |
 | 1.6 会话管理 API | **✅ 已完成（2026-09-22）**：`POST/GET /ai/conversations`、`GET /ai/conversations/{id}/messages`、`DELETE /ai/conversations/{id}`；`POST /ai/chat` 支持可选 `conversationId` + SSE 回传 `conversation` 事件；归属校验单一入口 `requireOwned`（改 id 只会得到"不存在或无权访问"）；role 只认 token。**重命名接口暂未做**（标题由首条消息自动生成，够用） | `AgentConversationController` |
