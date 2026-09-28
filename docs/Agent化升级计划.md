@@ -57,38 +57,38 @@
 > **M3 收尾 ✅**（路由级强制检索、空响应重试、来源卡片 + 出处落库 + 实机验证），全部推送 `origin/main`。
 > 下一步：**① M5 评测/类型检查进 CI → ② M4（多智能体与 MCP）**。
 
-> ### ⏸ 最新暂停状态（2026-09-28 第十三轮 = **M4 第一步：MCP server 落地并验证到协议层**；下一步：把 MCP 讲/演示出来 + M5）
+> ### ⏸ 最新暂停状态（2026-09-28 第十四轮 = **全链路审计**：不加功能，只把"声称能跑"逐条跑通）
 >
-> - **用户拍板**：新方向选 **MCP**（而不是先做评测门禁或清理）。
-> - **本轮做完的事**（细节见 `docs/开发记录.md`（三十四）、架构文档第九节）：
->   新增 `duyell.ai.mcp` 包（`McpToolExposure` 暴露策略 / `McpToolBridge` 桥接 / `McpServerConfig` 装配），
->   走官方 MCP Java SDK 0.18.3 的 SSE 传输，**默认关闭**（`AI_MCP_ENABLED=true` 才开）。
->   三个关键决定：① 不用 Spring AI 的 MCP starter 自动配置（它会把所有 `ToolCallback` 注册出去，
->   混角色且绕过风险等级）；② **DANGEROUS 工具永不外放**（MCP 没有 HITL 通道），WRITE 默认关闭；
->   ③ 身份取自令牌（工具以持令牌那个人的身份执行），角色不符即拒。
->   外部调用仍走 `ToolRegistry.executeForRole`（白名单 + ChangeContext 全部继承），
->   审计**不加列**即可区分：`session_id = mcp:<会话号>`。
-> - **验证**：`McpToolExposureTest` **7/7**；`.dsh/verify-mcp.cjs` 协议级
->   **PASS=28 FAIL=0 SKIP=2**（SKIP 是本机沙箱读不到库，已手工复核那两条：危险工具 0→0 未执行、
->   审计有 `get_my_gpa|mcp:<会话号>|SUCCESS`）；后端全量 **312 项全绿**。
->   CI 已加一步 `Assertions — MCP server`（CI 后端带 `AI_MCP_ENABLED=true` 启动）。
-> - **⏳ 待确认**：无（CI 在 `c624eb7` 上已全绿，含新增的 `Assertions — MCP server` 步骤）。
-> - **已知待办（下次开工）**：
->   1. **把 MCP 用起来/讲出来**：已补 `docs/MCP接入指南.md`（Cursor / Claude Desktop 配置、令牌获取、
->      安全边界、排错表）。仍可选：① 加 **stdio 传输**（让 Claude Desktop 免桥接），
->      ② **按会话决定工具面**（现在是"配置一个角色面 + 校验令牌角色"，同一实例只服务一个角色），
->      ③ 在真实客户端里实测一次（目前只有自写脚本走完整协议）。
->   2. **M5 收尾**：RAG 检索/接线进 CI（pgvector service + 假嵌入，复用假模型那套思路）。
->   3. **可选清理**：手写 Registrar 与声明式类的载荷组装去重；来源卡片/会话 UI 的 Playwright 是否进 CI。
-> - **本机环境（下次开机先看这里）**：MySQL80 / Redis / `postgresql-x64-16` 三个服务都是**自启动**；
->   后端与前端 dev server 视情况起（本轮验证期间起过，收工时会停）。
->   跑 RAG 演示要带环境变量：`AI_RAG_ENABLED=true`、`AI_BASE_URL=http://localhost:11434/v1`、
->   `AI_MODEL=qwen2.5:7b`、`AI_API_KEY=ollama`（占位）。
->   数据库迁移本轮已在本机执行：`docs/sql/2026-09-27-ai-message-sources.sql`（`ai_message.sources_json`）。
->   另有一个**CI 等价干净库 `edujwxt_ci`**（本轮为了复现 CI 建的，可留作以后验证夹具用，也可随时 drop）。
-> - **本轮最有价值的经验**：`本机能跑 ≠ 能跑`。两次翻车都是"依赖本机环境"——
->   ① 测试断言了本机演示残留的数据；② 导入路径靠 Windows 大小写不敏感才解析。
->   对付它们的办法都是**造一个和线上/CI 等价的环境去跑**，而不是在本机反复验证。
+> - **用户拍板**：多智能体**不做**（没有条件）；不再扩展功能。目标改为
+>   **保证项目全部链路能完整跑起来**（MCP 这类对外链路要形成好链路）。
+> - **本轮做的事**：把 README/脚本/文档里**声称**的每条链在真实环境跑一遍，红了就查是链路坏了
+>   还是脚本写错。逐条结果、四个真问题、一条运维教训，全部记在 `docs/开发记录.md`（三十五）。
+>   摘要：业务链路 P1–P4（31/63/136/106/91）+ 隐私 41 + 预警 28 + 前端实机 5 套（67/60/43/44/34）
+>   + 来源卡片 19 + 会话 31 + RAG 9/9 + MCP 协议 28 + **官方 MCP Inspector 真实客户端**全通；
+>   后端 **321 项**全绿。
+> - **修掉的四个真问题**：① 审计状态 `ROLE_FORBIDDEN` 游离在 `AuditStatus` 之外（我上一轮引入的，
+>   加了 `isKnown()` 自检 + 9 项桥接测试钉死）；② 来源卡片"刷新后仍在"的**等待竞态**（改轮询 + 诊断面包屑）；
+>   ③ `verify-m1.ps1` 把**环境错配**报成产品失败（现在环境不符的断言打 SKIP，限流段先测单次耗时才决定跑不跑，
+>   否则会拖十分钟）；④ **业务链路脚本一个都不在 CI 里**（已把 P1/P1写/P2/P3/P4/预警/M1 共 7 个加进 CI）。
+> - **一条运维教训（已写进 README 已知限制）**：**依赖模型的评测必须独占运行**。
+>   并发跑（例如同时跑前端实机 + RAG 评测）会让本机 Ollama 排队超时，
+>   `eval-rag.cjs` 的 Hit@5 会**假性掉到 25%**、黄金集会报一堆 `stream error: aborted`。独占重跑即恢复。
+> - **仍断着、需要你决定的链路（属于"加功能"，故没做）**：
+>   **成绩变更日志只有接口、没有页面**（`/score/change-log` 已实现并被 41 项断言覆盖，前端无页面引用）。
+>   README 功能矩阵已改成如实描述。
+> - **无法验证的（如实保留）**：`docker-compose.yml` 本机到 Docker Hub 不可达、从未实跑；
+>   Cursor/Claude Desktop 的 **GUI** 里没点过（协议层已用官方 Inspector CLI 跑通）。
+> - **本机环境（下次开机先看这里）**：MySQL80 / Redis / `postgresql-x64-16` 三个服务**自启动**；
+>   后端（8080）与前端 dev server（5173）按需起、收工即停。
+>   跑 RAG / 真实模型演示要带：`AI_RAG_ENABLED=true`、`AI_BASE_URL=http://localhost:11434/v1`、
+>   `AI_MODEL=qwen2.5:7b`、`AI_API_KEY=ollama`；要试 MCP 再加 `AI_MCP_ENABLED=true`；
+>   不需要模型时用 `.dsh/fake-model.cjs`（`AI_BASE_URL=http://127.0.0.1:11435/v1`、`AI_API_KEY=stub`、`AI_MODEL=fake-model`）。
+>   已执行的迁移：`docs/sql/2026-09-27-ai-message-sources.sql`（`ai_message.sources_json`）。
+>   另有一个 **CI 等价干净库 `edujwxt_ci`**（复现 CI 用，可随时 drop）。
+>   ⚠️ **依赖模型的脚本一次只跑一个**（Ollama 串行，否则会得到假性劣化，见 README 已知限制）。
+> - **已知待办（下次开工）**：① 确认这次推送的 CI 仍全绿（新增了 7 个业务链路步骤，是本轮最大变量）；
+>   ② 若要让"成绩变更日志"闭环 → 补管理端页面（加功能，需你点头）；
+>   ③ MCP 续（stdio / 按会话动态工具面）与 M5（RAG 接线进 CI）仍可做，但都不属于"补断点"。
 >
 > - **（上一轮）来源卡片的实现要点，改这块前先读**：
 >   - `d5d8539` 后端来源事件：`AgentEventType.SOURCES` + `AgentEvent.sources(...)`（载荷借 `args.sources` 槽位，

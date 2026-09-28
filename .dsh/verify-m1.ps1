@@ -7,20 +7,39 @@
 #   3. Backend fat jar running:
 #        cd backend/edu-system-server && mvn -o -B package -DskipTests
 #        java -jar edu-api/target/edu-api-0.0.1-SNAPSHOT.jar
-#      (stop the backend before rebuilding -- Windows locks the jar)
-#   4. No AI_API_KEY needed: unconfigured-AI degradation is asserted, not the model.
+#   4. The backend must run WITHOUT AI_API_KEY: this script asserts the
+#      unconfigured-AI degradation path, not the model.
+#
+# TWO BACKEND MODES (learned the hard way -- running it against a model-configured backend
+# produced 5 confusing red assertions that had nothing to do with the security baseline):
+#   A. no AI_API_KEY (the intended mode): sections 3/7 assert the degradation behaviour, and
+#      section 8 works because every chat fails instantly, so 12 requests fit inside the
+#      1-minute rate-limit window.
+#   B. AI configured: sections 3/7 are SKIPPED (the behaviour they assert cannot happen), and
+#      section 8 is SKIPPED too when the 12 calls take longer than the window (a slow local
+#      model rolls the window, so "nothing was blocked" is a measurement artefact, not a defect).
+#   SKIP lines are printed loudly and never counted as PASS or FAIL.
 #
 # ASCII-only on purpose: Windows PowerShell 5.1 reads .ps1 as ANSI, so non-ASCII
 # literals corrupt the parse. Assertions on Chinese response bodies decode the
 # raw bytes as UTF-8 and match Unicode code points instead.
 $ErrorActionPreference = 'Continue'
 $base = 'http://localhost:8080'
-$pass = 0; $fail = 0
+# redis-cli path: overridable so this script can also run on CI (Linux has redis-cli on PATH,
+# while this repo's dev machine has it under D:\Redis). Same pattern as EDU_MYSQL_CLIENT.
+$redisCli = if ($env:EDU_REDIS_CLI) { $env:EDU_REDIS_CLI } else { 'D:\Redis\5.0.14.1\redis-cli.exe' }
+$pass = 0; $fail = 0; $skip = 0
 
 function Check($name, $cond, $detail) {
   if ($cond) { $script:pass++; Write-Host ("  [PASS] {0}" -f $name) -ForegroundColor Green }
   else       { $script:fail++; Write-Host ("  [FAIL] {0}  -> {1}" -f $name, $detail) -ForegroundColor Red }
   if ($detail) { Write-Host ("         {0}" -f $detail) -ForegroundColor DarkGray }
+}
+
+# Environment mismatch must never masquerade as a product failure (see the header).
+function Skip($name, $why) {
+  $script:skip++
+  Write-Host ("  [SKIP] {0}  -> {1}" -f $name, $why) -ForegroundColor Yellow
 }
 
 Write-Host "`n=== 1. Auth boundary without token ===" -ForegroundColor Cyan
@@ -44,11 +63,18 @@ try {
 if (-not $token) { Write-Host "`nAborting: login failed" -ForegroundColor Yellow; exit 1 }
 
 Write-Host "`n=== 3. /ai/config degradation when AI is unconfigured ===" -ForegroundColor Cyan
+$aiConfigured = $null
 try {
   $cfg = Invoke-RestMethod -Uri "$base/ai/config" -Method GET -Headers @{ token = $token } -TimeoutSec 10
+  $aiConfigured = $cfg.data.configured
   Check '/ai/config returns code=200' ($cfg.code -eq '200') "code=$($cfg.code)"
-  Check 'configured=false when no API key' ($cfg.data.configured -eq $false) "configured=$($cfg.data.configured) model=$($cfg.data.model)"
+  # This one always applies: the key must never leak, configured or not.
   Check 'response does NOT expose apiKey' (-not ($cfg.data.PSObject.Properties.Name -contains 'apiKey')) ("fields: " + ($cfg.data.PSObject.Properties.Name -join ','))
+  if ($aiConfigured -eq $false) {
+    Check 'configured=false when no API key' $true "configured=false model=$($cfg.data.model)"
+  } else {
+    Skip 'configured=false when no API key' "backend has AI configured (configured=true model=$($cfg.data.model)); run this script against a backend without AI_API_KEY to assert the degradation path"
+  }
 } catch { Check '/ai/config reachable' $false $_.Exception.Message }
 
 Write-Host "`n=== 4. /ai/confirm (dangerous-op confirmation) ===" -ForegroundColor Cyan
@@ -75,7 +101,6 @@ try {
 }
 
 Write-Host "`n=== 5. confirmId ownership check (cannot confirm for another user) ===" -ForegroundColor Cyan
-$redisCli = 'D:\Redis\5.0.14.1\redis-cli.exe'
 $other = '{"confirmId":"ownership-test","userId":"2023001","role":"student","toolName":"select_course","displayName":"x","arguments":{"courseId":5},"riskLevel":"DANGEROUS","createdAt":0}'
 & $redisCli -p 6379 set 'ai:pending:ownership-test' $other EX 120 | Out-Null
 try {
@@ -108,8 +133,13 @@ try {
   $bytes = $resp.RawContentStream.ToArray()
   $body = [System.Text.Encoding]::UTF8.GetString($bytes)
   $key = [string][char]0x5BC6 + [string][char]0x94A5   # "mi yao" = key
-  Check 'unconfigured AI returns an SSE error event (no silent failure)' ($body -match 'event:message' -and $body -match '"type":"error"') ("snippet: " + (($body) -replace '\s+',' '))
-  Check 'error text is valid UTF-8 and names the missing key' ($body.Contains("AI API " + $key)) ("decoded: " + ($body -replace '\s+',' '))
+  if ($aiConfigured -eq $false) {
+    Check 'unconfigured AI returns an SSE error event (no silent failure)' ($body -match 'event:message' -and $body -match '"type":"error"') ("snippet: " + (($body) -replace '\s+',' '))
+    Check 'error text is valid UTF-8 and names the missing key' ($body.Contains("AI API " + $key)) ("decoded: " + ($body -replace '\s+',' '))
+  } else {
+    Skip 'unconfigured AI returns an SSE error event (no silent failure)' 'backend has AI configured: this stream is a real answer, not the degradation path'
+    Skip 'error text is valid UTF-8 and names the missing key' 'idem'
+  }
   # text/event-stream has exactly one valid encoding (UTF-8) and no way to
   # specify another, so Content-Type legitimately carries no charset parameter.
   # Recorded as a note, not an assertion -- it is spec-correct, not a defect.
@@ -119,25 +149,45 @@ try {
 Write-Host "`n=== 8. Rate limiting (phase 0.8) ===" -ForegroundColor Cyan
 # Default quota: 10 chats/minute per user. Send 12 and expect the tail to be rejected.
 # Reset first because step 7 already consumed one unit for this user.
-$redisCli = 'D:\Redis\5.0.14.1\redis-cli.exe'
 & $redisCli -p 6379 del "ai:rl:chat:admin01" | Out-Null
 $blocked = 0
 $allowed = 0
 # U+9891 U+7E41 = "pin fan" (frequent), from the limiter's rejection message
 $freq = [string][char]0x9891 + [string][char]0x7E41
-for ($i = 1; $i -le 12; $i++) {
-  try {
-    $r = Invoke-WebRequest -Uri "$base/ai/chat" -Method POST -Headers @{ token = $token } -ContentType 'application/json' -Body (@{message='hi'} | ConvertTo-Json) -UseBasicParsing -TimeoutSec 25
-    $b = [System.Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray())
-    if ($b.Contains($freq)) { $blocked++ } else { $allowed++ }
-  } catch { $blocked++ }
+
+# Measure ONE call first. A rolling 1-minute window can only be measured if the 12 calls fit
+# inside it; with a real local model each chat takes tens of seconds, so the loop would grind for
+# ten minutes and then report "nothing was blocked" -- a measurement artefact. Bail out early
+# instead (this used to hang the whole script until the caller's timeout).
+$oneStart = Get-Date
+$firstBody = ''
+try {
+  $r1 = Invoke-WebRequest -Uri "$base/ai/chat" -Method POST -Headers @{ token = $token } -ContentType 'application/json' -Body (@{message='hi'} | ConvertTo-Json) -UseBasicParsing -TimeoutSec 120
+  $firstBody = [System.Text.Encoding]::UTF8.GetString($r1.RawContentStream.ToArray())
+} catch { }
+$oneMs = [int]((Get-Date) - $oneStart).TotalMilliseconds
+if ($oneMs -gt 5000) {
+  Skip 'requests beyond the quota are rejected' ("one chat took ${oneMs}ms, so 12 calls cannot fit in the 60s window (the window would roll); run against a backend without AI_API_KEY (instant failures) to assert the limiter")
+  Skip 'quota boundary matches the configured 10/minute' "idem (one chat = ${oneMs}ms)"
+} else {
+  if ($firstBody.Contains($freq)) { $blocked++ } else { $allowed++ }
+  $rlStart = Get-Date
+  for ($i = 2; $i -le 12; $i++) {
+    try {
+      $r = Invoke-WebRequest -Uri "$base/ai/chat" -Method POST -Headers @{ token = $token } -ContentType 'application/json' -Body (@{message='hi'} | ConvertTo-Json) -UseBasicParsing -TimeoutSec 120
+      $b = [System.Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray())
+      if ($b.Contains($freq)) { $blocked++ } else { $allowed++ }
+    } catch { $blocked++ }
+  }
+  $rlSeconds = [int]((Get-Date) - $rlStart).TotalSeconds
+  Check 'requests within the per-minute quota are allowed' ($allowed -ge 1) "allowed=$allowed (12 calls in ~$($rlSeconds+[int]($oneMs/1000))s)"
+  Check 'requests beyond the quota are rejected' ($blocked -ge 1) "blocked=$blocked of 12"
+  Check 'quota boundary matches the configured 10/minute' ($allowed -ge 8 -and $allowed -le 11) "allowed=$allowed (expected ~10)"
 }
-Check 'requests within the per-minute quota are allowed' ($allowed -ge 1) "allowed=$allowed"
-Check 'requests beyond the quota are rejected' ($blocked -ge 1) "blocked=$blocked of 12"
-Check 'quota boundary matches the configured 10/minute' ($allowed -ge 8 -and $allowed -le 11) "allowed=$allowed (expected ~10)"
 & $redisCli -p 6379 del "ai:rl:chat:admin01" | Out-Null
 
 Write-Host "`n========================================" -ForegroundColor Cyan
-Write-Host ("RESULT: PASS={0}  FAIL={1}" -f $pass, $fail) -ForegroundColor $(if($fail -eq 0){'Green'}else{'Red'})
+Write-Host ("RESULT: PASS={0}  FAIL={1}  SKIP={2}" -f $pass, $fail, $skip) -ForegroundColor $(if($fail -eq 0){'Green'}else{'Red'})
 Write-Host "========================================" -ForegroundColor Cyan
+if ($skip -gt 0) { Write-Host "SKIP = environment mismatch (see the reasons above), not a product failure" -ForegroundColor Yellow }
 exit $(if ($fail -eq 0) { 0 } else { 1 })

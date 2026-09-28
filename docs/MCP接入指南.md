@@ -148,10 +148,29 @@ get_my_evaluations      我的评价
 ## 五、自检与排错
 
 ```bash
-# 协议级自检（无需模型）：握手 / tools/list / tools/call / 越权 / 审计
+# ① 自写脚本：协议级（握手 / tools/list / tools/call / 越权 / 审计），无需模型
 node .dsh/verify-mcp.cjs
 #   RESULT: PASS=28 FAIL=0 SKIP=2      <- 本机沙箱下读库的两条会 SKIP（CI 里会真跑）
+
+# ② 官方 MCP Inspector（真实第三方客户端，不需要装 GUI）——本项目已实测通过
+TOKEN=$(curl -s -X POST http://localhost:8080/login -H 'Content-Type: application/json' \
+  -d '{"username":"2023001","password":"123456"}' | sed 's/.*"token":"\([^"]*\)".*/\1/')
+
+# 列出工具（应看到 14 个只读工具）
+npx -y @modelcontextprotocol/inspector --cli http://localhost:8080/mcp/sse \
+  --header "token: $TOKEN" --method tools/list
+
+# 调用一个只读工具（应返回该生的真实课程数据，isError=false）
+npx -y @modelcontextprotocol/inspector --cli http://localhost:8080/mcp/sse \
+  --header "token: $TOKEN" --method tools/call --tool-name get_my_courses
+
+# 调一个未开放的危险工具（应报 tool_not_found —— 这是设计，不是 bug）
+npx -y @modelcontextprotocol/inspector --cli http://localhost:8080/mcp/sse \
+  --header "token: $TOKEN" --method tools/call --tool-name select_course --tool-arg courseId=7
 ```
+
+> 上面第 ② 组命令**在本机实测通过**（Inspector 能列出全部工具、调用返回真实数据、
+> 危险工具报 `tool_not_found`）。GUI 版直接用 `npx @modelcontextprotocol/inspector` 打开界面填同样两项。
 
 | 现象 | 原因 / 处理 |
 |---|---|
@@ -160,6 +179,7 @@ node .dsh/verify-mcp.cjs
 | 工具列表里没有"选课/退课/评教" | **这是设计**，不是 bug，见上面的安全边界 |
 | 想让教师/管理员也能用 | 一台实例一个角色面（`AI_MCP_ROLE`）。要同时支持多角色得按会话动态注册工具面，尚未实现 |
 | 改了工具却在客户端看不到 | 客户端会缓存工具列表，重启客户端或重连 |
+| 调用报 `tool_not_found` | 该工具没有被这个实例开放（按角色/风险等级过滤）；见启动日志里的 `[MCP 排除]` 行 |
 
 ---
 
@@ -169,5 +189,5 @@ node .dsh/verify-mcp.cjs
   （日志要改走 stderr），尚未实现；
 - **按会话动态工具面**：现在是"配置一个角色面 + 校验令牌角色"，同一实例只服务一个角色的工具面；
 - **resources / prompts 能力**：只声明了 tools（声明了却给不出内容的协议能力不如不声明）；
-- **真实客户端实机验证**：目前用自写脚本走完整协议验证（`.dsh/verify-mcp.cjs`），
-  尚未在 Cursor / Claude Desktop 里实测过。
+- **GUI 客户端实机验证**：协议层已用官方 Inspector CLI 跑通（见第五节），但**尚未在 Cursor /
+  Claude Desktop 的界面里点过一遍**——那属于"客户端配置"这一步，与协议正确性无关。

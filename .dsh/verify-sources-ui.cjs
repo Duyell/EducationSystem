@@ -240,16 +240,36 @@ async function main() {
 
   // ------------------------------------------------------------------
   phase('C. the card SURVIVES a full page reload (history replay, no SSE)')
+  const urlBeforeReload = page.url()
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.waitForSelector('.message-bubble', { timeout: 20000 })
-  await page.waitForTimeout(1500)
+  // 等条件而不是睡固定时间：历史渲染是异步的（列表 + 详情两个请求），
+  // 固定 1.5s 曾经让这条断言偶发变红 —— 而数据其实是好的（库里有、接口也返回了）。
+  // 轮询不会削弱断言强度：真的坏了，仍然会在超时后失败。
   const reloadedCards = page.locator('.sources-card')
-  const afterReload = await reloadedCards.count()
+  let afterReload = 0
+  for (let i = 0; i < 20; i++) {
+    afterReload = await reloadedCards.count()
+    if (afterReload > 0) break
+    await page.waitForTimeout(500)
+  }
+  // 诊断面包屑：把 URL 与实际渲染出来的内容打出来，这类问题从"翻半小时"变成"看一眼"。
+  const reloadedUrl = page.url()
+  const reloadedBubbles = await page.locator('.message-bubble').count()
+  const reloadedText = norm((await page.locator('.text-msg').allTextContents()).join(' | '))
+  console.log('    url before reload   : ' + urlBeforeReload)
+  console.log('    url after  reload   : ' + reloadedUrl)
+  console.log('    bubbles after reload: ' + reloadedBubbles + '  text: ' + reloadedText.slice(0, 100))
   // The card data is persisted with the message (ai_message.sources_json), so a reload —
   // which replays history from GET /ai/conversations/{id}/messages and sees no SSE at all —
   // must still show it. Before persistence existed this was 0, and the feature looked broken
   // to anyone who refreshed.
-  check('the card is still there after reload (sources are persisted)', afterReload > 0, 'cards=' + afterReload)
+  check(
+    'the card is still there after reload (sources are persisted)',
+    afterReload > 0,
+    'cards=' + afterReload + ' | url=' + reloadedUrl + ' | bubbles=' + reloadedBubbles +
+      ' | text=' + reloadedText.slice(0, 80),
+  )
 
   if (afterReload > 0) {
     const reloadedCitations = (await reloadedCards.last().locator('.source-text').allTextContents()).map(norm)

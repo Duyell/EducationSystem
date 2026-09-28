@@ -130,6 +130,12 @@ public class AiAuditService {
                 String errorMsg, String confirmId, Long durationMs,
                 String requestId, String sessionId, AiToolAudit writtenOut) {
         try {
+            // 状态写错不会编译失败，却会让"按状态聚合"的统计静默失真 —— 这里兜一道并在日志里点名。
+            // （真实案例：MCP 桥接里手写过 "ROLE_FORBIDDEN"，它不在 AuditStatus 的取值集合里。）
+            if (!AuditStatus.isKnown(status)) {
+                log.warn("审计状态不在已知取值内，请改用 AuditStatus 常量: status={}, tool={}, user={}",
+                        status, toolName, userId);
+            }
             AiToolAudit audit = new AiToolAudit();
             audit.setUserId(fit("user_id", userId, MAX_USER_ID_LEN));
             audit.setRole(fit("role", role, MAX_ROLE_LEN));

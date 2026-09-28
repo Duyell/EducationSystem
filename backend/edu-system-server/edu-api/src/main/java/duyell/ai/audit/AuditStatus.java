@@ -31,4 +31,27 @@ public final class AuditStatus {
      * 用于区分「真的执行了一次」与「请求重发但被幂等拦截」。
      */
     public static final String DUPLICATE_SKIPPED = "DUPLICATE_SKIPPED";
+
+    /**
+     * 全部合法取值。
+     *
+     * <p><b>为什么需要这个集合</b>：这些状态是 {@code String} 常量而不是枚举，
+     * 写错一个字符串编译器不会拦；而状态列会被查询与聚合，
+     * 拼错只会让统计**静默失真**——例如 MCP 桥接里手写过一个 {@code "ROLE_FORBIDDEN"}，
+     * 它既不在本集合里、也没人发现，直到 {@code .dsh/verify-p5-audit.ps1}
+     * 的"每个状态都是已知取值"这条断言把它揪出来。
+     * 现在 {@code AiAuditService} 写入前会校验一次，未知取值直接告警。
+     */
+    private static final java.util.Set<String> KNOWN = java.util.Set.of(
+            SUCCESS, FAILED, DENIED, REJECTED_BY_USER, INVALID_ARGUMENTS, DUPLICATE_SKIPPED);
+
+    /** 该状态是否为已知取值（供写入前自检与测试使用） */
+    public static boolean isKnown(String status) {
+        return status != null && KNOWN.contains(status);
+    }
+
+    /** 已知取值的只读集合（测试与排查用） */
+    public static java.util.Set<String> known() {
+        return KNOWN;
+    }
 }

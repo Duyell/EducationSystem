@@ -1,6 +1,7 @@
 package duyell.ai.mcp;
 
 import duyell.ai.audit.AiAuditService;
+import duyell.ai.audit.AuditStatus;
 import duyell.ai.tool.ToolDefinition;
 import duyell.ai.tool.ToolExecutionResult;
 import duyell.ai.tool.ToolRegistry;
@@ -84,11 +85,14 @@ public class McpToolBridge {
             return error("未认证：MCP 工具调用需要携带 token（与其它接口一致）");
         }
         if (!expectedRole.equals(caller.role())) {
-            // 工具面按配置的角色注册，调用者角色不符就直接拒绝：否则一个学生 token 能调用教师工具面
+            // 工具面按配置的角色注册，调用者角色不符就直接拒绝：否则一个学生 token 能调用教师工具面。
+            // 状态必须用 AuditStatus 的取值（这里是 DENIED）：手写一个"看起来更贴切"的字符串
+            // （例如 ROLE_FORBIDDEN）会游离在枚举之外，让按状态聚合的统计静默失真 ——
+            // 具体原因写进 errorMsg/结果文本即可。
             log.warn("MCP 调用被拒：角色不匹配。调用者={}({}), 本服务工具面角色={}",
                     caller.username(), caller.role(), expectedRole);
-            audit(caller, def, args, null, "ROLE_FORBIDDEN",
-                    "调用者角色 " + caller.role() + " 与本 MCP 工具面角色 " + expectedRole + " 不符", 0L);
+            audit(caller, def, args, null, AuditStatus.DENIED,
+                    "MCP 角色不匹配：调用者角色 " + caller.role() + " 与本服务工具面角色 " + expectedRole + " 不符", 0L);
             return error("无权限：本 MCP 服务开放的是「" + expectedRole + "」角色的工具面");
         }
 

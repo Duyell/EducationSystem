@@ -65,6 +65,17 @@ let routingTotal = 0
 let routingHits = 0
 const routingMisses = []
 
+/**
+ * 本轮**真正执行过**的工具（按 stream 里的"正在执行"事件统计），供审计核对使用。
+ *
+ * 为什么要把这个写成文件：`verify-p5-audit.ps1` 需要回答的问题是
+ * "**执行过的调用是否都落审计了**"，而不是"模型是否每次都选对工具"（后者是 ROUTING 指标）。
+ * 二者混在一起时，一次路由 miss 会让审计脚本报"某工具没有 SUCCESS 行"——
+ * 那是模型行为，不是持久化缺陷（实测踩到过）。把"执行过什么"落成机器可读的一份，
+ * 审计脚本就能把"没被调用"与"调了没落库"分开：前者 SKIP，后者才是真 FAIL。
+ */
+const executedTools = new Set()
+
 function check(name, cond, detail) {
   if (cond) {
     pass++
@@ -321,6 +332,7 @@ async function main() {
       ),
     ]
     const ok = expectAny.some((want) => picked.includes(want))
+    for (const t of executed) executedTools.add(t)
     routingTotal++
     if (ok) routingHits++
     console.log('  (' + elapsed + 's)')
@@ -418,6 +430,16 @@ async function main() {
 function finish() {
   const pct = routingTotal > 0 ? routingHits / routingTotal : 0
   const routingOk = routingTotal === 0 || pct >= minRouting
+  // 交给 verify-p5-audit.ps1 的"本轮执行过哪些工具"（见 executedTools 的注释）。
+  try {
+    require('node:fs').writeFileSync(
+      require('node:path').join(__dirname, 'p5-eval-tools.json'),
+      JSON.stringify({ executed: [...executedTools].sort(), routingHits, routingTotal }, null, 2),
+      'utf8',
+    )
+  } catch (e) {
+    console.log('(warning: could not write p5-eval-tools.json: ' + e.message + ')')
+  }
   console.log('\n========================================')
   console.log('RESULT: PASS=' + pass + '  FAIL=' + fail + '   (harness invariants)')
   if (routingTotal > 0) {

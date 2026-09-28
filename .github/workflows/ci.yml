@@ -170,6 +170,42 @@ jobs:
           EDU_MYSQL_ARGS: -h 127.0.0.1
         run: node .dsh/verify-mcp.cjs
 
+      # ---------------------------------------------------------------------------------
+      # 业务链路（P1–P5）与 M1 安全底座。这些脚本以前**一个都不在 CI 里** ——
+      # 结果是"本地跑过就算验过"，链路腐烂只能在下次手工跑时才发现（本仓库已吃过这个亏）。
+      # 它们都只走 HTTP（不需要模型），且各自建/清夹具，所以可以放心放进 CI。
+      # ---------------------------------------------------------------------------------
+      - name: Assertions — M1 security baseline
+        shell: pwsh
+        env:
+          # Linux runner 有 redis-cli 在 PATH 上；本机开发路径写在脚本默认值里
+          EDU_REDIS_CLI: redis-cli
+        run: ./.dsh/verify-m1.ps1
+
+      - name: Assertions — P1 GPA / training plan (read)
+        shell: pwsh
+        run: ./.dsh/verify-p1-api.ps1
+
+      - name: Assertions — P1 training plan (write, admin-only)
+        shell: pwsh
+        run: ./.dsh/verify-p1-write.ps1
+
+      - name: Assertions — P2 scheduling / rooms / course apply
+        shell: pwsh
+        run: ./.dsh/verify-p2-api.ps1
+
+      - name: Assertions — P3 selection rounds
+        shell: pwsh
+        run: ./.dsh/verify-p3-api.ps1
+
+      - name: Assertions — P4 exams
+        shell: pwsh
+        run: ./.dsh/verify-p4-api.ps1
+
+      - name: Assertions — academic warning
+        shell: pwsh
+        run: ./.dsh/verify-warning.ps1
+
       - name: Backend log on failure
         if: failure()
         run: |

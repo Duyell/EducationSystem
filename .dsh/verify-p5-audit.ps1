@@ -24,7 +24,9 @@
 #
 # WHAT IT ASSERTS (rows after the watermark):
 #   1. the golden set actually wrote audit rows (a green eval over an empty table is worthless);
-#   2. every read-only student tool the eval asks about is recorded as SUCCESS;
+#   2. every read-only student tool the eval **actually ran** is recorded as SUCCESS.
+#      The eval writes `.dsh/p5-eval-tools.json` (what it saw execute) so a ROUTING miss becomes a
+#      SKIP here instead of a bogus "not persisted" FAIL -- those are two different claims;
 #   3. the two DANGEROUS tools are recorded REJECTED_BY_USER with a confirm_id -- i.e. the run
 #      stopped at the card and the refusal was persisted, not just left out;
 #   4. NO row in the run is a non-READ_ONLY success (nothing risky slipped through);
@@ -48,7 +50,7 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-$pass = 0; $fail = 0
+$pass = 0; $fail = 0; $skip = 0
 
 function Check($name, $cond, $detail) {
   if ($cond) { $script:pass++; Write-Host ("  [PASS] " + $name) -ForegroundColor Green }
@@ -121,7 +123,27 @@ Check 'only golden-set callers appear' ($strangers.Count -eq 0) ($strangers -joi
 # ---- 2. the read-only student tools the golden set exercises must be recorded as SUCCESS ----
 # One per golden-set question (audit_my_graduation and get_my_training_plan are alternatives for
 # the same question, so either satisfies it).
+#
+# BUT: what this section can legitimately prove is "every call that RAN was persisted" -- not "the
+# model always picks these seven tools" (that is the eval's ROUTING metric, and routing misses are
+# scored there, not here). Observed for real: one routing miss made this script report
+# "no SUCCESS row for recommend_courses", which reads like a persistence defect but was model
+# behaviour. So the eval writes down what it saw execute, and this script uses it to separate
+# "never called" (SKIP) from "called but not persisted" (a real FAIL).
+$executedArtifact = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'p5-eval-tools.json'
+$executedTools = @()
+if (Test-Path $executedArtifact) {
+  try {
+    $artifact = Get-Content $executedArtifact -Raw | ConvertFrom-Json
+    $executedTools = @($artifact.executed)
+  } catch { Write-Host "  (warning: could not parse p5-eval-tools.json)" -ForegroundColor Yellow }
+}
 Write-Host "`n=== read-only student tools recorded as SUCCESS ===" -ForegroundColor Cyan
+if ($executedTools.Count -gt 0) {
+  Write-Host ("  (eval reported these tools actually RAN: " + ($executedTools -join ',') + ")") -ForegroundColor DarkGray
+} else {
+  Write-Host "  (p5-eval-tools.json not found -- assuming every listed tool was attempted)" -ForegroundColor DarkGray
+}
 $studentReadOnly = @{
   'audit_my_graduation|get_my_training_plan' = 'credits/graduation question';
   'get_my_gpa'                               = 'gpa question';
@@ -134,6 +156,15 @@ $studentReadOnly = @{
 foreach ($key in $studentReadOnly.Keys) {
   $names = $key.Split('|')
   $hit = @($parsed | Where-Object { $names -contains $_.tool -and $_.status -eq 'SUCCESS' })
+  $attempted = $true
+  if ($executedTools.Count -gt 0) {
+    $attempted = @($names | Where-Object { $executedTools -contains $_ }).Count -gt 0
+  }
+  if (-not $attempted) {
+    $script:skip++
+    Write-Host ("  [SKIP] SUCCESS row for " + $key + " (" + $studentReadOnly[$key] + ")  -> the model did not pick this tool this run (a ROUTING miss, scored by eval-p5-tools.cjs; persistence is not disproven)") -ForegroundColor Yellow
+    continue
+  }
   Check ("SUCCESS row for " + $key + " (" + $studentReadOnly[$key] + ")") ($hit.Count -gt 0) `
     ("statuses=" + ((@($parsed | Where-Object { $names -contains $_.tool } | Select-Object -ExpandProperty status) -join ',')))
 }
@@ -189,6 +220,7 @@ $badRole = @($parsed | Where-Object { @('student', 'teacher', 'admin') -notconta
 Check 'every role is student/teacher/admin' ($badRole.Count -eq 0) (($badRole | ForEach-Object { $_.role }) -join ',')
 
 Write-Host "`n========================================" -ForegroundColor Cyan
-Write-Host ("RESULT: PASS=" + $pass + "  FAIL=" + $fail) -ForegroundColor $(if ($fail -eq 0) { 'Green' } else { 'Red' })
+Write-Host ("RESULT: PASS=" + $pass + "  FAIL=" + $fail + "  SKIP=" + $skip) -ForegroundColor $(if ($fail -eq 0) { 'Green' } else { 'Red' })
 Write-Host "========================================" -ForegroundColor Cyan
+if ($skip -gt 0) { Write-Host "SKIP = the model did not pick that tool this run (a ROUTING miss, scored by eval-p5-tools.cjs)" -ForegroundColor Yellow }
 exit $(if ($fail -eq 0) { 0 } else { 1 })
