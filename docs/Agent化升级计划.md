@@ -24,7 +24,9 @@
 | 1 | 框架化迁移（Spring AI + 多轮记忆） | ✅ 完成 | 33 工具全部声明式 + 会话 API + 迁移覆盖率测试 |
 | 2 | RAG 制度问答（pgvector / 切分索引 / `search_policy` / 评测） | ✅ 完成 | 检索 Hit@5 12/12、MRR 0.944；严格端到端 9/9 |
 | 3 | 收尾补强（路由级强制检索、空响应重试、前端来源卡片 + 出处落库） | ✅ 完成 | 确定性单测 + 严格评测 + `vue-tsc` + 来源卡片 UI 实机 19/19 |
-| 4–5 | 多智能体 / MCP、评测门禁整合进 CI | ⬜ 未开始 | —— |
+| 4 | **M4：MCP server**（官方 SDK、SSE 传输、只读工具面、闸门复用、审计可区分） | ✅ 第一步完成 | `McpToolExposureTest` 7/7 + `.dsh/verify-mcp.cjs` 协议级（CI 里跑） |
+| 4b | M4 续：stdio 传输 / 按会话动态工具面 / 接入指南 | ⬜ 未开始 | —— |
+| 5 | **M5**：评测门禁整合进 CI（RAG 检索接线 + 假嵌入） | 🚧 部分（工具面/隐私/会话/MCP 已进 CI；RAG 未进） | —— |
 
 **阶段 0（安全底座）已全部完成：8/8。** 后端单测 **41 项** + 端到端安全断言 16 项，全绿。
 并已用本地 Ollama `qwen2.5:7b` 完成**真实 LLM 端到端验证**（含业务数据变更与审计落库的双向核实）。
@@ -55,29 +57,29 @@
 > **M3 收尾 ✅**（路由级强制检索、空响应重试、来源卡片 + 出处落库 + 实机验证），全部推送 `origin/main`。
 > 下一步：**① M5 评测/类型检查进 CI → ② M4（多智能体与 MCP）**。
 
-> ### ⏸ 最新暂停状态（2026-09-28 第十二轮 = **CI 全绿 + 假模型接入**；下一步：M4/M5 二选一）
+> ### ⏸ 最新暂停状态（2026-09-28 第十三轮 = **M4 第一步：MCP server 落地并验证到协议层**；下一步：把 MCP 讲/演示出来 + M5）
 >
-> - **CI 已全绿并核实**（`gh run view 36377554110`，3m38s，逐步 ✓）：
->   `Import schema` → `Backend tests 305/6` → `Frontend type check` → `Package` → `Start backend`
->   → `tool surface 39/39` → `privacy & audit 41/41` → `conversations 25/25`。
->   修法见 `docs/开发记录.md`（三十二）：privacy 脚本自带夹具 + `EDU_MYSQL_ARGS`（CI 必须带
->   `-h 127.0.0.1`，容器 MySQL 没有本地 socket）+ 探针失败 abort；会话脚本无模型时降级断言。
-> - **本轮又往前走了一步：给 CI 一个假模型**（`.dsh/fake-model.cjs`，细节见开发记录（三十三））。
->   起因是"全绿里有水分"：没有模型时凡是需要回答的断言都只能关掉，CI 只证明"没报错"。
->   假模型是 OpenAI 兼容的确定性 SSE 服务，三种模式：文本 / 工具调用（`[[tool:get_my_gpa]]`）/
->   危险操作（`[[tool:select_course:{"courseId":7}]]` → HITL `confirm` 事件）。它的回答是把收到的
->   历史照抄回来，所以**红了必然是链路坏了**，而不是模型状态波动。
->   CI 现在：`Start fake model` 步骤 + 后端带 `AI_BASE_URL/AI_API_KEY/AI_MODEL` 指向它，
->   会话步骤改成**强断言模式（31 项）**。本地照 CI 顺序排练：**39/39、41/41、31/31**。
-> - **边界（别混淆）**：需要真实模型才有意义的**质量**评测（工具路由准确率、制度问答忠实度）
->   **故意不进 CI**，仍由本机 `eval-p5-tools.cjs` / `eval-rag.cjs` 负责。假模型证明管道通，不证明模型好。
-> - **已知待办（下次开工，需你拍板方向）**：
->   1. **M4**：多智能体 / MCP 方向。本项目形状很适合做 **MCP server**（33 个声明式工具已带
->      JSON Schema、风险等级与角色白名单），把工具面暴露给外部 MCP 客户端是简历上很亮的一块；
->      也可选"多智能体（规划者/执行者）"路线，但那更像重写编排层。
->   2. **M5 收尾**：把 RAG 检索评测做成 CI 门禁（复用假模型这套思路：加 pgvector service + 假嵌入）。
->   3. **可选清理**：手写 Registrar 与声明式类的载荷组装去重（学生那对 645/978 行逐字相同）；
->      以及来源卡片/会话 UI 的 Playwright 实机验证是否进 CI。
+> - **用户拍板**：新方向选 **MCP**（而不是先做评测门禁或清理）。
+> - **本轮做完的事**（细节见 `docs/开发记录.md`（三十四）、架构文档第九节）：
+>   新增 `duyell.ai.mcp` 包（`McpToolExposure` 暴露策略 / `McpToolBridge` 桥接 / `McpServerConfig` 装配），
+>   走官方 MCP Java SDK 0.18.3 的 SSE 传输，**默认关闭**（`AI_MCP_ENABLED=true` 才开）。
+>   三个关键决定：① 不用 Spring AI 的 MCP starter 自动配置（它会把所有 `ToolCallback` 注册出去，
+>   混角色且绕过风险等级）；② **DANGEROUS 工具永不外放**（MCP 没有 HITL 通道），WRITE 默认关闭；
+>   ③ 身份取自令牌（工具以持令牌那个人的身份执行），角色不符即拒。
+>   外部调用仍走 `ToolRegistry.executeForRole`（白名单 + ChangeContext 全部继承），
+>   审计**不加列**即可区分：`session_id = mcp:<会话号>`。
+> - **验证**：`McpToolExposureTest` **7/7**；`.dsh/verify-mcp.cjs` 协议级
+>   **PASS=28 FAIL=0 SKIP=2**（SKIP 是本机沙箱读不到库，已手工复核那两条：危险工具 0→0 未执行、
+>   审计有 `get_my_gpa|mcp:<会话号>|SUCCESS`）；后端全量 **312 项全绿**。
+>   CI 已加一步 `Assertions — MCP server`（CI 后端带 `AI_MCP_ENABLED=true` 启动）。
+> - **⏳ 待确认**：这次推送的 CI 是否仍全绿（新增了 MCP 步骤）。
+> - **已知待办（下次开工）**：
+>   1. **把 MCP 用起来/讲出来**：目前只有协议级脚本验证；可选 ① 写一份 `docs/MCP接入指南.md`
+>      （Cursor / Claude Desktop 的配置示例 + 截图），② 加 **stdio 传输**（`spring-ai-starter-mcp-server`
+>      或 SDK 的 stdio provider），让不支持 HTTP 的客户端也能用，③ **按会话决定工具面**（现在是
+>      "配置一个角色面 + 校验令牌角色"，更彻底的做法是按令牌角色动态注册工具面）。
+>   2. **M5 收尾**：RAG 检索/接线进 CI（pgvector service + 假嵌入，复用假模型那套思路）。
+>   3. **可选清理**：手写 Registrar 与声明式类的载荷组装去重；来源卡片/会话 UI 的 Playwright 是否进 CI。
 > - **本机环境（下次开机先看这里）**：MySQL80 / Redis / `postgresql-x64-16` 三个服务都是**自启动**；
 >   后端与前端 dev server 视情况起（本轮验证期间起过，收工时会停）。
 >   跑 RAG 演示要带环境变量：`AI_RAG_ENABLED=true`、`AI_BASE_URL=http://localhost:11434/v1`、

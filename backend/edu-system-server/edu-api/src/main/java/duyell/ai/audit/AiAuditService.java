@@ -43,6 +43,8 @@ public class AiAuditService {
     static final int MAX_STATUS_LEN = 32;
     static final int MAX_CONFIRM_ID_LEN = 64;
     static final int MAX_REQUEST_ID_LEN = 64;
+    /** 与 `ai_tool_audit.session_id` 列宽一致（M4：外部 MCP 会话标识写在这一列） */
+    static final int MAX_SESSION_ID_LEN = 64;
 
     private final AiToolAuditMapper auditMapper;
     private final ObjectMapper objectMapper;
@@ -65,7 +67,7 @@ public class AiAuditService {
                        Map<String, Object> args, String result, String status,
                        String errorMsg, String confirmId, Long durationMs) {
         record(userId, role, toolName, riskLevel, args, result, status, errorMsg, confirmId,
-                durationMs, null, null);
+                durationMs, null, null, null);
     }
 
     /**
@@ -79,7 +81,22 @@ public class AiAuditService {
                        Map<String, Object> args, String result, String status,
                        String errorMsg, String confirmId, Long durationMs, String requestId) {
         record(userId, role, toolName, riskLevel, args, result, status, errorMsg, confirmId,
-                durationMs, requestId, null);
+                durationMs, requestId, null, null);
+    }
+
+    /**
+     * 带**会话标识**的记录（M4：外部 MCP 调用）。
+     *
+     * <p>{@code sessionId} 用的是建表时就有的 {@code session_id} 列——运行时那条路径它一直是 null，
+     * 因此"有 session_id 的行"天然就是外部 MCP 调用：**不加列、不改查询口径**就把两类调用分开了。
+     * 审计要回答的第一个问题往往是"这次改动是谁发起的"，而"界面/内置 Agent/外部客户端"是三件不同的事。
+     */
+    public void record(String userId, String role, String toolName, String riskLevel,
+                       Map<String, Object> args, String result, String status,
+                       String errorMsg, String confirmId, Long durationMs,
+                       String requestId, String sessionId) {
+        record(userId, role, toolName, riskLevel, args, result, status, errorMsg, confirmId,
+                durationMs, requestId, sessionId, null);
     }
 
     /**
@@ -111,7 +128,7 @@ public class AiAuditService {
     void record(String userId, String role, String toolName, String riskLevel,
                 Map<String, Object> args, String result, String status,
                 String errorMsg, String confirmId, Long durationMs,
-                String requestId, AiToolAudit writtenOut) {
+                String requestId, String sessionId, AiToolAudit writtenOut) {
         try {
             AiToolAudit audit = new AiToolAudit();
             audit.setUserId(fit("user_id", userId, MAX_USER_ID_LEN));
@@ -124,6 +141,7 @@ public class AiAuditService {
             audit.setErrorMsg(truncate(errorMsg));
             audit.setConfirmId(fit("confirm_id", confirmId, MAX_CONFIRM_ID_LEN));
             audit.setRequestId(fit("request_id", requestId, MAX_REQUEST_ID_LEN));
+            audit.setSessionId(fit("session_id", sessionId, MAX_SESSION_ID_LEN));
             audit.setDurationMs(durationMs);
 
             if (writtenOut != null) {
@@ -136,6 +154,7 @@ public class AiAuditService {
                 writtenOut.setStatus(audit.getStatus());
                 writtenOut.setErrorMsg(audit.getErrorMsg());
                 writtenOut.setConfirmId(audit.getConfirmId());
+                writtenOut.setSessionId(audit.getSessionId());
                 writtenOut.setDurationMs(audit.getDurationMs());
             }
 

@@ -643,3 +643,69 @@ AgentEventPublisher      生产：SseAgentEventPublisher（推浏览器）；测
   （由 `OutputGuardrailIntegrationTest` 的落库断言守住）；
 - 助手本轮没有任何正文时**不留空消息**（避免历史里全是空轮次）。
 
+---
+
+## 九、M4：MCP server —— 把工具面开放给外部客户端（2026-09-28）
+
+### 9.1 它解决什么
+
+前八层的能力只在**自己的界面**里可用：模型调工具、服务端跑循环。MCP（Model Context Protocol）
+把同一批工具变成**对外协议**，Claude Desktop / Cursor / Cline 等客户端可以连上来，
+用它们自己的模型访问本校教务数据。项目从"会调工具的助手"变成"**能力提供方**"。
+
+```
+外部 MCP 客户端（Claude Desktop / Cursor）
+   │  GET  /mcp/sse          （SSE 建流，返回 endpoint 事件；须带 token 头）
+   │  POST /mcp/message?sessionId=…  （JSON-RPC：initialize / tools/list / tools/call）
+   ▼
+LoginInterceptor          与其它接口同一套：JWT + Redis 双校验
+   ▼
+McpServerConfig           手工装配：SSE 传输 + McpSyncServer + 路由器
+   ├── McpToolExposure     **策略唯一实现**：哪些工具可以外放
+   └── McpToolBridge       ToolDefinition → MCP Tool/Spec，转发到 ↓
+          ▼
+ToolRegistry.executeForRole    角色白名单 + ChangeContext(SOURCE_AI)
+   ▼
+ai_tool_audit             每次外部调用一条，session_id = mcp:<会话号>
+```
+
+### 9.2 三个必须讲清楚的设计决定
+
+**① 不用 Spring AI 的 MCP starter 自动配置。** 它会把容器里**所有 `ToolCallback` bean**
+注册成 MCP 工具，而本项目的工具面是**按角色隔离 + 按风险等级**发放的：自动注册会把三角色的工具
+混成一份并绕过风险等级（正是 `ToolRegistry` 里记载过的那次越权翻车）。因此只用官方
+MCP Java SDK，在 `McpServerConfig` 里手工装配——与 RAG 放弃 pgvector 自动配置是同一个理由。
+
+**② DANGEROUS 工具永不外放（不是"默认关闭"，是"没有开关"）。** 这类工具（选课/录成绩/评教）
+的安全性来自 HITL：服务端挂起 SSE 流、用户在界面上点确认。**MCP 没有这条通道**，
+放出去等于"外部客户端一次调用即可完成"，而确认卡片永远不会出现。
+`WRITE`（可逆小改动）默认关闭、可显式开启；`READ_ONLY` 始终开放。
+被排除的工具**带原因**返回，启动日志逐条打印。
+
+**③ 身份取自令牌，工具以持令牌那个人的身份执行。** MCP 的 `tools/list` 无法按会话变化，
+所以策略是"配置一个角色面 + 校验令牌角色"：身份来自 `LoginInterceptor` 校验后写入请求的
+`username`/`role`（由传输层的 `contextExtractor` 搬进 MCP 上下文），与其它接口同源，
+客户端无法用参数把自己变成别人；角色不符直接拒绝（审计记为 `ROLE_FORBIDDEN`）。
+
+### 9.3 与既有闸门的关系
+
+外部调用和模型调用最终都进 `ToolRegistry.executeForRole`，**没有第二条执行路径**：
+角色白名单、`ChangeContext.SOURCE_AI`（成绩变更日志仍能区分"界面改的 / Agent 改的"）全部继承。
+审计**不加列**就区分开了两类调用：`session_id` 在运行时路径下一直是 null，
+因此 `session_id = mcp:<sessionId>` 的行即外部 MCP 调用。
+
+### 9.4 怎么开、怎么连
+
+```bash
+# 后端（默认关闭；MCP 是"对外开口"的组件，不该因为启动应用就悄悄开着）
+AI_MCP_ENABLED=true java -jar edu-api/target/edu-api-0.0.1-SNAPSHOT.jar
+
+# 客户端配置（Cursor / Claude Desktop 的 mcp-remote 等）：SSE 端点 + 一个登录 token
+#   URL:   http://localhost:8080/mcp/sse
+#   header: token: <登录 /login 拿到的 JWT>
+```
+
+验证：`.dsh/verify-mcp.cjs`（协议级：握手 / tools/list / tools/call / 越权 / 审计），
+无需模型；单测 `McpToolExposureTest` 盯暴露策略。
+
+

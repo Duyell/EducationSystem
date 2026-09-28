@@ -125,6 +125,25 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
         </dependency>
+        <!--
+          M4（MCP server）：把内部工具面开放给外部 MCP 客户端（Claude Desktop / Cursor / Cline…）。
+          ⚠️ 这里刻意**不用** spring-ai-starter-mcp-server-webmvc 的自动配置，只要官方 SDK：
+          它的自动配置会把容器里**所有 ToolCallback bean** 注册成 MCP 工具，
+          而本项目的工具面是**按角色隔离 + 按风险等级**发放的（见 duyell.ai.tool.ToolRegistry 类注释里
+          那次越权翻车）。暴露哪些工具必须由一个地方说了算 → duyell.ai.mcp.McpToolExposure，
+          装配在 duyell.ai.mcp.McpServerConfig 里手工完成。
+          ⚠️ 默认关闭（ai.mcp.enabled=false）：一个"对外开口"的组件不该因为有人启动应用就悄悄开着。
+        -->
+        <dependency>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp</artifactId>
+            <version>${mcp-sdk.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp-spring-webmvc</artifactId>
+            <version>${mcp-sdk.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

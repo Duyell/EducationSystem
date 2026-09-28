@@ -56,6 +56,9 @@
         <!-- M2 框架化迁移：Spring AI。用本机 m2 仓库里已有的 1.0.9（与 Spring Boot 3.5 兼容），
              这样离线（mvn -o）也能构建；升级前先确认目标版本已在本机仓库里 -->
         <spring-ai.version>1.0.9</spring-ai.version>
+        <!-- M4（MCP server）：Spring AI 1.0.9 搭的是 MCP Java SDK 0.18.x 那条线。
+             与上面同理——用本机仓库里已有的版本，保证 `mvn -o` 仍能离线构建。 -->
+        <mcp-sdk.version>0.18.3</mcp-sdk.version>
     </properties>
     <dependencyManagement>
         <dependencies>

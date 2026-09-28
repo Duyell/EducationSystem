@@ -122,6 +122,8 @@ jobs:
           AI_BASE_URL: http://127.0.0.1:11435/v1
           AI_API_KEY: stub-key
           AI_MODEL: fake-model
+          # M4：MCP server 默认关闭，这里显式打开以验证它（无需模型，纯协议 + 工具面）
+          AI_MCP_ENABLED: 'true'
         run: |
           nohup java -jar edu-api-0.0.1-SNAPSHOT.jar > backend.log 2>&1 &
           up=0
@@ -157,6 +159,16 @@ jobs:
       # 这些断言在 CI 里是真跑的。脚本判据里的 31 项含这批强断言。
       - name: Assertions — conversations (expect 31/31)
         run: node .dsh/verify-m2-conversations.cjs
+
+      # M4：MCP server 的协议级验证（SSE 握手 → tools/list → tools/call + 越权拒绝 + 审计留痕）。
+      # 不需要模型；它证明外部 MCP 客户端真的能连上并调到工具，而单测只能证明"暴露策略算得对"。
+      # 断言条数不写死：本地沙箱下读库的两条会 SKIP（沙箱拒绝 Node 抓子进程输出），
+      # CI 里 mysql 可用，它们会真跑 —— 所以判定口径是"FAIL 必须为 0"。
+      - name: Assertions — MCP server (expect 0 FAIL)
+        env:
+          EDU_MYSQL_CLIENT: mysql
+          EDU_MYSQL_ARGS: -h 127.0.0.1
+        run: node .dsh/verify-mcp.cjs
 
       - name: Backend log on failure
         if: failure()

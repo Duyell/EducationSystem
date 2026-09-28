@@ -102,6 +102,23 @@ ai:
     # 启动时自动重建索引（首次建库/换语料时用；生产应关掉，改由管理接口触发）
     reindex-on-startup: ${AI_RAG_REINDEX_ON_STARTUP:true}
 
+  # ---------- M4：MCP server（把工具面开放给外部 MCP 客户端）----------
+  # ⚠️ 默认**关闭**：这是本项目唯一一处"把内部能力交给外部进程"的开关，
+  # 不该因为有人启动应用就悄悄开着（与 RAG 同样的取舍）。
+  # 开启方式：AI_MCP_ENABLED=true，然后 MCP 客户端连 GET /mcp/sse（须带 token 头，同其它接口）。
+  mcp:
+    enabled: ${AI_MCP_ENABLED:false}
+    # 本服务开放哪个角色的工具面。调用者令牌的角色必须与它一致，否则拒绝
+    # （工具面是全局注册的，无法按会话变化，所以用"配置一个角色 + 校验令牌角色"来保证不串号）。
+    role: ${AI_MCP_ROLE:student}
+    # 是否开放 WRITE 工具（可逆的小改动）。DANGEROUS 工具**永不开放**：
+    # 它们的安全性依赖人工确认（HITL），而 MCP 没有这条通道 —— 见 McpToolExposure。
+    allow-writes: ${AI_MCP_ALLOW_WRITES:false}
+    server-name: ${AI_MCP_SERVER_NAME:edu-system-mcp}
+    server-version: ${AI_MCP_SERVER_VERSION:1.0.0}
+    sse-endpoint: ${AI_MCP_SSE_ENDPOINT:/mcp/sse}
+    message-endpoint: ${AI_MCP_MESSAGE_ENDPOINT:/mcp/message}
+
 academic:
   warning:
     # 学业预警阈值：未通过课程学分累计达到该值即提示学生（JW-01 §5）

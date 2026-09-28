@@ -146,7 +146,7 @@ class AiAuditServiceTest {
         AiToolAudit written = new AiToolAudit();
 
         assertDoesNotThrow(() -> auditService.record(tooLong, "teacher", "enter_score", "DANGEROUS",
-                Map.of(), "{}", AuditStatus.SUCCESS, null, null, 1L, null, written));
+                Map.of(), "{}", AuditStatus.SUCCESS, null, null, 1L, null, null, written));
 
         assertEquals(32, written.getUserId().length(),
                 "超长 user_id 应被截断到列宽，而不是让 MySQL 拒绝整条 INSERT");
@@ -205,6 +205,8 @@ class AiAuditServiceTest {
         assertColumnWidthAtLeast("status", AiAuditService.MAX_STATUS_LEN);
         assertColumnWidthAtLeast("confirm_id", AiAuditService.MAX_CONFIRM_ID_LEN);
         assertColumnWidthAtLeast("request_id", AiAuditService.MAX_REQUEST_ID_LEN);
+        // M4：外部 MCP 调用把会话标识写进这一列（运行时路径一直是 null），两侧同样必须对齐
+        assertColumnWidthAtLeast("session_id", AiAuditService.MAX_SESSION_ID_LEN);
 
         // 常量本身也必须装得进应用层限制
         assertFitsLimit(AiAuditService.MAX_STATUS_LEN, "status",
