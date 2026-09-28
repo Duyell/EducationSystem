@@ -198,19 +198,13 @@ npx -y @modelcontextprotocol/inspector --cli http://localhost:8080/mcp/sse \
   （日志要改走 stderr），尚未实现；
 - **按会话动态工具面**：现在是"配置一个角色面 + 校验令牌角色"，同一实例只服务一个角色的工具面；
 - **resources / prompts 能力**：只声明了 tools（声明了却给不出内容的协议能力不如不声明）；
-- ~~**GUI 客户端实机验证**~~ **✅ 已做（2026-09-28，Cursor）**：协议层先前已用官方 Inspector CLI 跑通；
-  这一轮补上了界面这一半，并因此揪出上面排错表第一条的 4xx 缺陷。**证据**（Cursor 自己的日志
-  `%APPDATA%\Cursor\logs\<会话>\window*\exthost\anysphere.cursor-mcp\MCP user-edu-system.log`）：
-
-  ```
-  21:06:18.575 [info] [V2] Handling CreateClient action
-  21:06:18.851 [warning] Error connecting to streamableHttp server, falling back to SSE:
-                      Streamable HTTP error: Error POSTing to endpoint: {"code":"404","msg":"接口不存在: mcp/sse","data":null}
-  21:06:19.038 [info] Successfully connected to sse server
-  21:06:19.219 [info] [V2 FSM] connection:connect_success: conn=connecting -> conn=connected
-  21:06:19.219 [info] CreateClient completed, connected: true, statusType: connected
-  ```
-
-  这两行放在一起就是那条 4xx 契约的全部意义：**"falling back to SSE" 是被我们的 404 触发的**
-  （同一个客户端、同一份配置，此前回 500 时它直接 `connect_failure`、连回退都不试）。
-  Claude Desktop 仍未实机（要用 `mcp-remote` 桥接，且本机未安装）。
+- **GUI 客户端实机**：**连接层已验证**（2026-09-28）——Cursor（免费版就能连）通过 SSE 回退连上了，
+  证据见上面的日志；**但 Cursor 的 AI 对话要付费订阅**，所以"模型自己决定调工具"这一步没用它跑。
+  改用**同样免费的官方 Inspector**（真实第三方客户端）完成调用验证：`tools/list` 列出 14 个只读工具、
+  `tools/call get_my_courses` 返回该生**真实课程数据**（Java程序设计 / SpringBoot开发 / 高级英语 /
+  Python编程），审计里留下 `session_id = mcp:0c3872ad-…`、`user_id = 2023002`、`status = SUCCESS` 一行
+  ——**外部客户端 → 我们的工具 → 真实业务数据**这条链路到此闭环。
+  想自己动手点：`npx @modelcontextprotocol/inspector`（浏览器 UI 里 List Tools / Run Tool）；
+  想跑"模型自主调工具"且不花钱：VS Code + Cline / Roo Code + 本机 Ollama（本机已有 `qwen2.5:7b`），
+  把上面的 `url` 与 `token` 头填进去即可。
+- **Claude Desktop 实机**：未做（它只认 stdio，要用 `mcp-remote` 桥接，且本机未安装该客户端）。
