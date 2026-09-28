@@ -106,8 +106,23 @@ function Api($method, $path, $token, $body) {
 
 function Brief($r) { return ("status=" + $r.status + " code=" + $r.code + " body=" + $r.body.Substring(0, [Math]::Min(170, $r.body.Length))) }
 function Cnt($v) { if ($null -eq $v) { return 0 } else { return @($v).Count } }
-function Iso([datetime]$d) { return $d.ToString('yyyy-MM-ddTHH:mm:ss') }
-function ParseIso($s) { return [datetime]::Parse($s.Replace('T',' ')) }
+function Iso($d) { if ($null -eq $d) { return $null }; return ([datetime]$d).ToString('yyyy-MM-ddTHH:mm:ss') }
+
+# Parse an ISO timestamp coming back from the API.
+#
+# WHY THIS IS NOT JUST [datetime]::Parse($s.Replace('T',' ')):
+#   PowerShell 7.5+ makes ConvertFrom-Json turn ISO-8601 strings into [datetime] automatically.
+#   On the CI runner that made `$s.Replace('T',' ')` a method-not-found error, which
+#   $ErrorActionPreference='Continue' swallowed, so this function returned $null -- and $null then
+#   silently flowed into comparisons ($null -lt (Get-Date) is TRUE) and into request bodies.
+#   Result: nine confident-looking failures that had nothing to do with exam conflicts.
+#   Accepting both shapes and parsing with an explicit InvariantCulture makes it version-proof.
+function ParseIso($s) {
+  if ($null -eq $s) { return $null }
+  if ($s -is [datetime]) { return $s }
+  $t = "$s".Trim().Replace('T', ' ')
+  return [datetime]::ParseExact($t, 'yyyy-MM-dd HH:mm:ss', [System.Globalization.CultureInfo]::InvariantCulture)
+}
 
 function CourseIdByCode($code, $admin) {
   $r = Api 'GET' '/course?page=1&pageSize=300' $admin $null
@@ -234,6 +249,9 @@ Write-Host "`n=== 4. conflict detection: HALF-OPEN interval (the key rule) ===" 
 $seeded = @((Api 'GET' "/exam/course/$cs101" $admin $null).data)[0]
 Check 'seeded CS101 exam is queryable' ($null -ne $seeded) 'not found'
 $startS = ParseIso $seeded.examTime
+# Fail at the source: a null here used to cascade into nine misleading failures downstream
+# (null request bodies -> "no conflict" -> "the update was not refused").
+Check 'seeded exam time parses to a real timestamp' ($null -ne $startS) ("examTime=" + $seeded.examTime)
 $endS = $startS.AddMinutes([int]$seeded.durationMinutes)
 $roomId = [int]$seeded.roomId
 
