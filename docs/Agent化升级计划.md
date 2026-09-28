@@ -55,36 +55,29 @@
 > **M3 收尾 ✅**（路由级强制检索、空响应重试、来源卡片 + 出处落库 + 实机验证），全部推送 `origin/main`。
 > 下一步：**① M5 评测/类型检查进 CI → ② M4（多智能体与 MCP）**。
 
-> ### ⏸ 最新暂停状态（2026-09-28 第十一轮 = **CI 两个脚本的环境依赖修完，本地三步全绿**；下一步：确认 CI + M4/M5）
+> ### ⏸ 最新暂停状态（2026-09-28 第十二轮 = **CI 全绿 + 假模型接入**；下一步：M4/M5 二选一）
 >
-> - **本轮提交**（全部已推 `origin/main`）：CI 三步脚本修复（`verify-privacy.ps1` 自带夹具 +
->   `EDU_MYSQL_ARGS`/`EDU_MYSQL_DB` + 探针失败 abort；`verify-m2-conversations.cjs` 无模型时降级断言）；
->   细节见 `docs/开发记录.md`（三十二）。
-> - **⏳ 唯一待确认**：GitHub 上这次运行是否**全绿**（`gh run list --limit 3` / `gh run view <id>`；
->   `--log-failed` 取日志需一次性提权，它要写用户目录缓存）。
->   上一轮已实测变绿的步骤：`Import` ✓、`Backend tests 305/6` ✓、`Frontend type check` ✓、
->   `Package` ✓、`Start backend` ✓、`Assertions — tool surface 39/39` ✓。
-> - **本轮修掉的两处"环境依赖"**（都是在**本地造出 CI 等价环境**后才复现的）：
->   1. **`verify-privacy.ps1`**：15 条失败其实只有两个根因 —— ① 脚本假设"种子里有评教记录"（其实没有）；
->      ② **CI 里 mysql 探针一条都查不到**：容器只把 3306 发布到 `127.0.0.1`，runner 没有本地 socket，
->      而脚本用 `mysql -uroot ...`（**没带 `-h`**）→ 连接失败 → `score.id` 取空 →
->      PUT 体变成 `{"id":,}` → 接口合理回 **400 请求体格式错误** → 还牵连出 500 与一堆 `rows=` 空。
->      修法：`EDU_MYSQL_ARGS`（CI 传 `-h 127.0.0.1`）+ `EDU_MYSQL_DB`（可指干净库）；
->      **探针失败立刻 abort（exit 2）并打印实际命令**，不再把基础设施问题伪装成业务断言失败；
->      评教夹具改为脚本自带（现在 **41 条**，含"夹具已清理"）。
->   2. **`verify-m2-conversations.cjs`**：`--no-llm` 只是"不断言模型回答**内容**"，脚本**照样发真实对话请求**；
->      CI 无模型 → 服务端按设计不落空正文 → "助手回复也落库"必然红（本机开着 Ollama 时是绿的）。
->      已降级为无模型时的**用户侧**断言（仍证明第二轮落库与顺序），助手侧由有模型分支 + 单测覆盖。
-> - **本地验证（照 CI 三步顺序，后端指向干净库 `edujwxt_ci` 且不带任何 AI 环境变量）**：
->   工具面 **39/39**、隐私审计 **41/41**、会话 **25/25**；有模型时会话脚本 **31/31**。
->   另验证：abort 路径（bogus client → exit 2）、可重复性（连跑两次 41/41、跑完 `total_evals=0`）。
-> - **已知待办（下次开工，按优先级）**：
->   1. **确认 CI 全绿**；若会话脚本那一步仍偶发，注意它是 HTTP-only、`--no-llm` 已与模型解耦。
->   2. **可选升级：给 CI 一个"假模型"**（本地起一个 OpenAI 兼容的 SSE 小服务），
->      这样会话脚本的**强断言**（助手侧落库、护栏残渣）在 CI 里也能真验，而不只是"不报错"。
->   3. **M5 评测门禁进 CI**：RAG 评测（`eval-rag.cjs --strict-faithfulness`）与来源卡片/会话 UI 的
->      Playwright 实机验证目前只能本机跑；可加 pgvector service + 假嵌入，或维持"实机验证在本地"。
->   4. **M4**：多智能体 / MCP 方向；可选清理：手写 Registrar 与声明式类的**载荷组装去重**。
+> - **CI 已全绿并核实**（`gh run view 36377554110`，3m38s，逐步 ✓）：
+>   `Import schema` → `Backend tests 305/6` → `Frontend type check` → `Package` → `Start backend`
+>   → `tool surface 39/39` → `privacy & audit 41/41` → `conversations 25/25`。
+>   修法见 `docs/开发记录.md`（三十二）：privacy 脚本自带夹具 + `EDU_MYSQL_ARGS`（CI 必须带
+>   `-h 127.0.0.1`，容器 MySQL 没有本地 socket）+ 探针失败 abort；会话脚本无模型时降级断言。
+> - **本轮又往前走了一步：给 CI 一个假模型**（`.dsh/fake-model.cjs`，细节见开发记录（三十三））。
+>   起因是"全绿里有水分"：没有模型时凡是需要回答的断言都只能关掉，CI 只证明"没报错"。
+>   假模型是 OpenAI 兼容的确定性 SSE 服务，三种模式：文本 / 工具调用（`[[tool:get_my_gpa]]`）/
+>   危险操作（`[[tool:select_course:{"courseId":7}]]` → HITL `confirm` 事件）。它的回答是把收到的
+>   历史照抄回来，所以**红了必然是链路坏了**，而不是模型状态波动。
+>   CI 现在：`Start fake model` 步骤 + 后端带 `AI_BASE_URL/AI_API_KEY/AI_MODEL` 指向它，
+>   会话步骤改成**强断言模式（31 项）**。本地照 CI 顺序排练：**39/39、41/41、31/31**。
+> - **边界（别混淆）**：需要真实模型才有意义的**质量**评测（工具路由准确率、制度问答忠实度）
+>   **故意不进 CI**，仍由本机 `eval-p5-tools.cjs` / `eval-rag.cjs` 负责。假模型证明管道通，不证明模型好。
+> - **已知待办（下次开工，需你拍板方向）**：
+>   1. **M4**：多智能体 / MCP 方向。本项目形状很适合做 **MCP server**（33 个声明式工具已带
+>      JSON Schema、风险等级与角色白名单），把工具面暴露给外部 MCP 客户端是简历上很亮的一块；
+>      也可选"多智能体（规划者/执行者）"路线，但那更像重写编排层。
+>   2. **M5 收尾**：把 RAG 检索评测做成 CI 门禁（复用假模型这套思路：加 pgvector service + 假嵌入）。
+>   3. **可选清理**：手写 Registrar 与声明式类的载荷组装去重（学生那对 645/978 行逐字相同）；
+>      以及来源卡片/会话 UI 的 Playwright 实机验证是否进 CI。
 > - **本机环境（下次开机先看这里）**：MySQL80 / Redis / `postgresql-x64-16` 三个服务都是**自启动**；
 >   后端与前端 dev server 视情况起（本轮验证期间起过，收工时会停）。
 >   跑 RAG 演示要带环境变量：`AI_RAG_ENABLED=true`、`AI_BASE_URL=http://localhost:11434/v1`、

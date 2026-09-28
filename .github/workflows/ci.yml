@@ -1,9 +1,11 @@
 # CI：把"手工敲的验证命令"变成每次 push 自动跑的门禁
 #
 # 设计取舍（为什么长这样）：
-#   1. **只跑不依赖大模型的部分** —— 305 项后端测试 + 隐私 40 / 工具面 39 / 会话 25 三套断言
-#      + 前端类型检查。需要 Ollama 与真实模型的用例（-Dai.live=true、RAG 真机、会话 UI）在 CI 里
-#      没有模型可用，它们本来就默认跳过（gated by system property），这里不额外打开。
+#   1. **只跑不依赖"真模型"的部分** —— 305 项后端测试 + 隐私 41 / 工具面 39 / 会话 31 三套断言
+#      + 前端类型检查。**模型用 `.dsh/fake-model.cjs` 顶替**：它只会照抄收到的历史，
+#      因此 CI 里每条"需要回答"的断言都变成确定性的（失败必然意味着链路坏了，而不是"今天模型心情不同"）。
+#      需要**真实模型**才能测的东西（工具路由准确率、制度问答忠实度）**故意不进 CI**：
+#      它们由本机的 `.dsh/eval-rag.cjs` / `.dsh/eval-p5-tools.cjs` 负责，并要求机器上有 Ollama。
 #   2. **一个 job 顺序跑**，而不是拆成多个 job 并行：日志集中在一个地方，排查更方便
 #      （这个项目吃过"多处并发写同一个库互相干扰"的亏，见开发记录里批次迁移那几轮）。
 #   3. MySQL 用 service 容器，启动后**显式导入**建表与种子数据：测试里的夹具依赖种子数据，
@@ -86,13 +88,40 @@ jobs:
           npm ci
           npm run type-check
 
-      # ③ 起后端，跑三套**不依赖模型**的断言脚本
+      # ③ 起后端（背后是④那个不会真思考的假模型），跑三套断言脚本
       - name: Package backend
         working-directory: backend/edu-system-server
         run: mvn -B package -DskipTests -pl edu-api -am
 
+      # ④ 起一个**确定性的假模型**（OpenAI 兼容的 SSE 小服务）。
+      #    没有它，CI 里任何"需要模型回答"的断言都只能关掉 —— 那样 CI 只证明"没报错"，
+      #    而不是"这条链路能用"。实测教训：会话脚本即使带 --no-llm 也会发真实对话请求，
+      #    无模型时助手侧按设计不落库，于是它在本机（有 Ollama）绿、在 CI 红。
+      #    接上假模型后，会话脚本可以跑**强断言**（多轮落库、落库正文干净、记忆真的进了提示词）。
+      - name: Start fake model (deterministic LLM stub)
+        run: |
+          node .dsh/fake-model.cjs > fake-model.log 2>&1 &
+          up=0
+          for i in $(seq 1 20); do
+            if curl -sf -o /dev/null -X POST http://127.0.0.1:11435/v1/chat/completions \
+                 -H 'Content-Type: application/json' -d '{"messages":[]}'; then
+              echo "fake model up after ${i}s"; up=1; break
+            fi
+            sleep 1
+          done
+          if [ "$up" != "1" ]; then
+            echo "::error::fake model did not start within 20s"
+            cat fake-model.log
+            exit 1
+          fi
+
       - name: Start backend
         working-directory: backend/edu-system-server/edu-api/target
+        env:
+          # 指向上面那个假模型：CI 不依赖任何真实模型/API Key
+          AI_BASE_URL: http://127.0.0.1:11435/v1
+          AI_API_KEY: stub-key
+          AI_MODEL: fake-model
         run: |
           nohup java -jar edu-api-0.0.1-SNAPSHOT.jar > backend.log 2>&1 &
           up=0
@@ -124,11 +153,16 @@ jobs:
           EDU_MYSQL_ARGS: -h 127.0.0.1
         run: ./.dsh/verify-privacy.ps1
 
-      - name: Assertions — conversations (expect 25/25)
-        run: node .dsh/verify-m2-conversations.cjs --no-llm
+      # 强断言模式（不带 --no-llm）：假模型会回答，因此"助手回复也落库""多轮记忆真的进了提示词"
+      # 这些断言在 CI 里是真跑的。脚本判据里的 31 项含这批强断言。
+      - name: Assertions — conversations (expect 31/31)
+        run: node .dsh/verify-m2-conversations.cjs
 
       - name: Backend log on failure
         if: failure()
-        run: tail -200 backend/edu-system-server/edu-api/target/backend.log || true
+        run: |
+          tail -200 backend/edu-system-server/edu-api/target/backend.log || true
+          echo "----- fake model log -----"
+          tail -50 fake-model.log || true
 
 
