@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -71,10 +72,19 @@ class ScoreChangeLogTest {
 
     @Test
     void insertUpdateDeleteAreAllLoggedWithBeforeAndAfter() {
+        // 条数以**基线**为参照，而不是写死 1 / 2。
+        //
+        // 为什么必须这样：score_change_log 是**只增的审计表**，而且**真实业务也会往里写**——
+        // 本机只要跑过一次演示脚本（`.dsh/verify-score-changelog-ui.cjs` 会真的录成绩/改成绩/
+        // 删成绩，正是这一页的实机验证），同一 (学号, 课程) 就会留下真实记录，
+        // 写死条数的断言会瞬间变红，而且看起来像"日志写多了"这种假故障。
+        // 查询是 `order by create_time desc, id desc`，所以最新一条就是本用例刚写的那条。
+        int base = logs().size();
+
         // ① 新增：before 为空，after 有值
         Score saved = seed("80", "90");
         List<ScoreChangeLog> afterInsert = logs();
-        assertEquals(1, afterInsert.size(), "新增应留一条日志");
+        assertEquals(base + 1, afterInsert.size(), "新增应恰好多一条日志");
         ScoreChangeLog insertLog = afterInsert.get(0);
         assertEquals(ScoreChangeLog.OP_INSERT, insertLog.getOperation());
         assertEquals(null, insertLog.getBeforeTotal(), "新增没有改前值");
@@ -91,7 +101,7 @@ class ScoreChangeLogTest {
         scoreService.update(patch);
 
         List<ScoreChangeLog> all = logs();
-        assertEquals(2, all.size());
+        assertEquals(base + 2, all.size(), "修改应再留一条日志");
         ScoreChangeLog updateLog = all.stream()
                 .filter(l -> ScoreChangeLog.OP_UPDATE.equals(l.getOperation()))
                 .findFirst().orElse(null);
@@ -150,14 +160,22 @@ class ScoreChangeLogTest {
     /** 日志可查：按学号 + 课程过滤，且带出课程名（管理员阅读时不必再拼表） */
     @Test
     void changeLogQuerySupportsFilters() {
+        // 同 insertUpdateDeleteAreAllLoggedWithBeforeAndAfter：审计表里有历史记录是**正常状态**，
+        // 所以这里断言"总数比基线多 1"，而不是"总数恰好 1"。
+        long base = changeLogMapper.count(STUDENT, COURSE_ID, null);
+
         seed("75", "85");
 
         PageResult<ScoreChangeLog> page = scoreService.changeLog(1, 20, STUDENT, COURSE_ID, null);
-        assertEquals(1L, page.getTotal());
-        assertEquals(1, page.getList().size());
+        assertEquals(base + 1L, page.getTotal(), "应查到我刚写的那一条");
+        assertFalse(page.getList().isEmpty());
         assertEquals("CS107", page.getList().get(0).getCourseCode(), "应带出课程代码，便于管理员阅读");
+        // 返回的每一行都必须匹配过滤条件（证明过滤真的生效，而不是恒真）
+        assertTrue(page.getList().stream()
+                        .allMatch(r -> STUDENT.equals(r.getStudentId()) && COURSE_ID == (int) r.getCourseId()),
+                "过滤条件必须对每一行都成立");
 
-        // 不匹配的过滤条件应查不到（证明过滤真的生效，而不是恒真）
+        // 不匹配的过滤条件应查不到（这两条不受历史记录影响：不存在这种课程/操作人）
         assertEquals(0L, scoreService.changeLog(1, 20, STUDENT, 999999, null).getTotal());
         assertEquals(0L, scoreService.changeLog(1, 20, STUDENT, COURSE_ID, "nobody").getTotal());
     }

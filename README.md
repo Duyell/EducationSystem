@@ -189,13 +189,26 @@ npm run dev          # http://localhost:5173
 
 ### 6. 自检（脚本都可重复跑）
 
+**推代码之前先跑这一条**（按固定顺序跑三道快速门禁，避免把红推上去、让 CI 给你发失败通知）：
+
+```bash
+.\.dsh\pre-push-check.ps1                      # 后端测试 + 前端类型检查 + 前端单测
+```
+
+其余按需：
+
 ```bash
 node .dsh/eval-p5-tools.cjs --inventory-only   # 工具面不变量      期望 39/39
 .\.dsh\verify-privacy.ps1                      # 隐私与审计        期望 41/41
-node .dsh/verify-m2-conversations.cjs --no-llm # 会话链路          期望 25/25
-node .dsh/eval-rag.cjs                         # RAG（需 AI_RAG_ENABLED=true）
-mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 312 项
+node .dsh/verify-m2-conversations.cjs          # 会话链路（带模型 31/31）
+node .dsh/verify-mcp.cjs                       # MCP 协议级（需 AI_MCP_ENABLED=true）
+node .dsh/verify-score-changelog-ui.cjs        # 成绩变更日志页实机 33/33（需 dev server）
+node .dsh/eval-rag.cjs --strict-faithfulness   # RAG（需 AI_RAG_ENABLED=true + 独占运行）
+mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 321 项
 ```
+
+> ⚠️ **依赖模型的脚本一次只跑一个**：本机 Ollama 串行处理请求，并发会让嵌入调用排队超时、
+> 评测指标假性劣化（见"已知限制"）。
 
 > 用容器编排也可以：`docker compose up -d --build`。**注意**该 compose 按 Docker 起 MySQL，
 > 与本文档描述的"本机原生三库 + 本地 Ollama"路径不同，详见"已知限制"。
