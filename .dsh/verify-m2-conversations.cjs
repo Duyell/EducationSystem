@@ -195,11 +195,24 @@ const textOf = (events) => events.filter((e) => e.type === 'token').map((e) => e
     messages2.length > messages1.length, `${messages1.length} → ${messages2.length}`);
   // 一轮的落库顺序是 user → assistant，所以最后一条是助手回复、倒数第二条才是用户提问
   const lastTwo = messages2.slice(-2);
-  check('第二轮的用户提问与助手回复都落库，且顺序为 user → assistant',
-    lastTwo.length === 2 && lastTwo[0].role === 'user' && lastTwo[0].content === secondMessage
-      && lastTwo[1].role === 'assistant'
-      && typeof lastTwo[1].content === 'string' && lastTwo[1].content.trim().length > 0,
-    JSON.stringify(lastTwo));
+  if (!SKIP_LLM) {
+    check('第二轮的用户提问与助手回复都落库，且顺序为 user → assistant',
+      lastTwo.length === 2 && lastTwo[0].role === 'user' && lastTwo[0].content === secondMessage
+        && lastTwo[1].role === 'assistant'
+        && typeof lastTwo[1].content === 'string' && lastTwo[1].content.trim().length > 0,
+      JSON.stringify(lastTwo));
+  } else {
+    // ⚠️ --no-llm 也必须区分"有没有模型"：这个脚本即使在 --no-llm 下**仍然发真实对话请求**
+    //    （只是不断言模型回答的内容）。CI 里没有任何模型配置，/ai/chat 会立刻回 error 事件，
+    //    而服务端按设计**不落空正文**——于是"助手回复也落库"这条断言在 CI 上必然失败。
+    //    （实测：本机开着 Ollama 时它是绿的，一换成"无模型"就红，属于"依赖本机环境"的又一例。）
+    //    所以无模型时只断言用户侧：这仍然证明了第二轮确实落库、且用户消息顺序正确；
+    //    助手侧由上面 !SKIP_LLM 分支 + Java 单测（ConversationServiceTest）覆盖。
+    check('第二轮的用户提问已落库（--no-llm 且无模型：助手侧不产出正文，故不断言助手消息）',
+      lastTwo.length >= 1 && lastTwo[lastTwo.length - 1].role === 'user'
+        && lastTwo[lastTwo.length - 1].content === secondMessage,
+      JSON.stringify(lastTwo));
+  }
 
   // 落库正文必须干净：护栏扣下的原始工具调用 JSON / 协议标签不能进会话记录，
   // 否则下一轮模型会把自己上一轮的畸形输出当成"我说过的话"再学一遍。
@@ -245,6 +258,9 @@ const textOf = (events) => events.filter((e) => e.type === 'token').map((e) => e
     !(finalList.json.data || []).some((c) => c.id === convId));
 
   console.log(`\n=== 结果: PASS=${pass}  FAIL=${fail} ===`);
-  if (SKIP_LLM) console.log('（--no-llm：跳过了真实模型对话，仅验证会话 CRUD 与越权）');
+  if (SKIP_LLM) {
+    console.log('（--no-llm：仍会发真实对话请求，但不断言模型回答的内容；');
+    console.log('  没有模型时助手侧不会落库，故助手消息相关的断言自动降级为用户侧断言）');
+  }
   process.exit(fail === 0 ? 0 : 1);
 })().catch((e) => { console.error('脚本异常:', e); process.exit(2); });

@@ -114,10 +114,14 @@ jobs:
       - name: Assertions — tool surface (expect 39/39)
         run: node .dsh/eval-p5-tools.cjs --inventory-only
 
-      - name: Assertions — privacy & audit log (expect 40/40)
+      - name: Assertions — privacy & audit log (expect 41/41)
         shell: pwsh
         env:
           EDU_MYSQL_CLIENT: mysql
+          # CI 的 MySQL 是容器、只把 3306 发布到 127.0.0.1，runner 上没有本地 socket：
+          # 客户端必须显式指定 host，否则脚本里每个 Sql 探针都返回空，
+          # 失败会以"id 取不到 -> JSON 体畸形 -> HTTP 400"这种极具误导性的形式出现。
+          EDU_MYSQL_ARGS: -h 127.0.0.1
         run: ./.dsh/verify-privacy.ps1
 
       - name: Assertions — conversations (expect 25/25)

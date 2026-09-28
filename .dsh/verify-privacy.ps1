@@ -9,10 +9,24 @@
 # and removes it again through the mysql client, then verifies the cleanup. Everything else only
 # reads, so the whole script is repeatable.
 #
+# CLEAN-DB NOTE (2026-09-28): this script used to assume "the seed data has evaluations".
+# It does NOT: seed_data.sql ships ZERO teacher_evaluation rows. On a clean database (CI) that
+# made 'teacher payload has rows' fail and produced a cascade of confusing follow-ups --
+# including a bogus "HTTP 400 malformed body", which was really the score UPDATE being sent with
+# an empty id because the mysql query that fetched that id had failed. The script now creates the
+# single evaluation row it needs (and cleans it up), so it passes on a clean database.
+#
+# CI needs EDU_MYSQL_ARGS='-h 127.0.0.1': there MySQL publishes 127.0.0.1:3306 from a container and
+# the runner has no local socket, so `mysql -uroot ...` without -h fails to connect at all.
+#
 # ASCII-only on purpose (Windows PowerShell 5.1 parses .ps1 as ANSI).
 $ErrorActionPreference = 'Continue'
 $base = 'http://localhost:8080'
 $mysql = if ($env:EDU_MYSQL_CLIENT) { $env:EDU_MYSQL_CLIENT } else { 'D:\mysql-8.4.7-winx64\mysql-8.4.7-winx64\bin\mysql.exe' }
+$mysqlArgs = if ($env:EDU_MYSQL_ARGS) { @($env:EDU_MYSQL_ARGS -split '\s+' | Where-Object { $_ -ne '' }) } else { @() }
+# Which database the Sql probes read. Overridable so this script can be pointed at a clean,
+# CI-equivalent database (e.g. edujwxt_ci) to reproduce CI locally instead of guessing.
+$mysqlDb = if ($env:EDU_MYSQL_DB) { $env:EDU_MYSQL_DB } else { 'edujwxt' }
 $pass = 0; $fail = 0
 
 # Chinese phrases built from code points: this file must stay ASCII-only (PS 5.1 parses .ps1 as ANSI,
@@ -29,8 +43,35 @@ function Check($name, $cond, $detail) {
 }
 
 function Sql([string]$sql) {
-  $out = & $mysql -uroot -p123456 -D edujwxt -N -B -e $sql 2>$null
+  $out = & $mysql @mysqlArgs -uroot -p123456 -D $mysqlDb -N -B -e $sql 2>$null
   return @($out | Where-Object { $_ -ne $null -and "$_".Trim() -ne '' })
+}
+
+# Fail fast when the mysql client cannot be used at all.
+# Without this the script reports a dozen unrelated-looking failures (empty id -> malformed JSON
+# body -> HTTP 400, empty counts, "cleanup failed", ...) and the real cause stays hidden -- that is
+# exactly what happened in CI. Not a product assertion, so it aborts instead of counting a FAIL.
+function RequireSql() {
+  $probe = Sql 'select 1'
+  if ("$probe" -ne '1') {
+    Write-Host ""
+    Write-Host "  [ABORT] cannot query MySQL with: $mysql $($mysqlArgs -join ' ')" -ForegroundColor Red
+    Write-Host "          Every DB-level assertion below would fail with a misleading error." -ForegroundColor Red
+    Write-Host "          Set EDU_MYSQL_CLIENT (client binary) and EDU_MYSQL_ARGS (e.g. '-h 127.0.0.1' in CI)." -ForegroundColor Red
+    exit 2
+  }
+}
+
+# Preconditions for the assertions below. They abort (exit 2) instead of counting a FAIL: they
+# describe the harness, not the product.
+function RequireFixture($name, $sql, $expected) {
+  $got = (Sql $sql) | Select-Object -First 1
+  if ("$got" -ne $expected) {
+    Write-Host ""
+    Write-Host ("  [ABORT] fixture '" + $name + "' not in place: expected " + $expected + ", got '" + $got + "'") -ForegroundColor Red
+    Write-Host ("          probe: " + $sql) -ForegroundColor Red
+    exit 2
+  }
 }
 
 function Login($u, $p) {
@@ -68,11 +109,30 @@ Check 'student 2023001 login' ($null -ne $student)
 Check 'teacher 10001 login' ($null -ne $teacher1)
 Check 'teacher 10004 login' ($null -ne $teacher2)
 
+Write-Host "`n=== 0. fixtures (this script owns them; the seed has no evaluations) ===" -ForegroundColor Cyan
+RequireSql
+
+# One evaluation row: course 1 (CS101, teacher 10001) submitted by 2023001, exactly the shape the
+# seed data used to be assumed to contain. It backs three assertions:
+#   - the teacher's list is non-empty and still carries score/courseName,
+#   - the student still sees their own submission (with their own id),
+#   - evaluating course 1 a second time is rejected as a duplicate.
+Sql "delete from teacher_evaluation where course_id=1 and student_id='2023001'" | Out-Null
+Sql "insert into teacher_evaluation(course_id, teacher_id, student_id, score, content) values(1,'10001','2023001',5,'privacy probe fixture')" | Out-Null
+RequireFixture 'evaluation for course 1 by 2023001' "select count(*) from teacher_evaluation where course_id=1 and student_id='2023001'" '1'
+
+# Section 3 asserts "nothing was written when validation failed", and section 5 inserts a grade for
+# the same (course, student). A left-over row from an interrupted earlier run would break both, so
+# clear that pair up front rather than relying on the cleanup at the end.
+Sql "delete from score_change_log where course_id=10 and student_id='2024002'" | Out-Null
+Sql "delete from score where course_id=10 and student_id='2024002'" | Out-Null
+RequireFixture 'no pre-existing grade for course 10 / 2024002' "select count(*) from score where course_id=10 and student_id='2024002'" '0'
+
 # ---------------------------------------------------------------- 1. anonymity
 Write-Host "`n=== 1. evaluation anonymity (teacher sees content, not the submitter) ===" -ForegroundColor Cyan
 $r = Api 'GET' '/evaluate/teacher?pageNum=1&pageSize=50' $teacher1 $null
 Check 'teacher GET /evaluate/teacher -> HTTP 200' ($r.status -eq 200) ("status=" + $r.status)
-Check 'teacher payload has rows (seed has evaluations)' ($r.body -match '"total":[1-9]') ($r.body.Substring(0, [Math]::Min(200, $r.body.Length)))
+Check 'teacher payload has rows (fixture evaluation exists)' ($r.body -match '"total":[1-9]') ($r.body.Substring(0, [Math]::Min(200, $r.body.Length)))
 Check 'teacher payload exposes NO studentId' ($r.body -notmatch '"studentId"\s*:\s*"[0-9]') 'studentId leaked to the teacher'
 Check 'teacher payload exposes NO studentName' ($r.body -notmatch '"studentName"\s*:\s*"[^"]') 'studentName leaked to the teacher'
 Check 'teacher payload still carries content/score' (($r.body -match '"score"') -and ($r.body -match '"courseName"')) 'content fields missing'
@@ -91,7 +151,7 @@ $r = Api 'POST' '/evaluate' $student '{"courseId":10,"teacherId":"10001","score"
 Check 'evaluating a course you did not select is rejected' ($r.body -notmatch '"code":"200"') ($r.body.Substring(0, [Math]::Min(200, $r.body.Length)))
 Check 'rejection explains why' ($r.body -match $MSG_NOT_SELECTED) ($r.body.Substring(0, [Math]::Min(200, $r.body.Length)))
 
-# course 1 was already evaluated by 2023001 in the seed data
+# course 1 was already evaluated by 2023001 in the fixture created in section 0
 $r = Api 'POST' '/evaluate' $student '{"courseId":1,"teacherId":"10001","score":5,"content":"x"}'
 Check 'evaluating the same course twice is rejected' ($r.body -notmatch '"code":"200"') ($r.body.Substring(0, [Math]::Min(200, $r.body.Length)))
 Check 'duplicate rejection explains why' ($r.body -match $MSG_ALREADY_EVAL) ($r.body.Substring(0, [Math]::Min(200, $r.body.Length)))
@@ -171,6 +231,12 @@ Check 'the deletion itself was logged as DELETE' ("$deleteLogged" -eq '1') ("row
 Sql "delete from score_change_log where course_id=10 and student_id='2024002'" | Out-Null
 $left = (Sql "select count(*) from score_change_log where course_id=10 and student_id='2024002'") | Select-Object -First 1
 Check 'log rows cleaned up (script is repeatable)' ("$left" -eq '0') ("rows=" + $left)
+
+# remove the section-0 evaluation fixture as well: this script must leave no trace, and a left-over
+# row would make the next run's "course 1 already evaluated" probe pass for the wrong reason.
+Sql "delete from teacher_evaluation where course_id=1 and student_id='2023001'" | Out-Null
+$leftEval = (Sql "select count(*) from teacher_evaluation where course_id=1 and student_id='2023001'") | Select-Object -First 1
+Check 'evaluation fixture cleaned up (script is repeatable)' ("$leftEval" -eq '0') ("rows=" + $leftEval)
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host ("RESULT: PASS=" + $pass + "  FAIL=" + $fail) -ForegroundColor $(if ($fail -eq 0) { 'Green' } else { 'Red' })

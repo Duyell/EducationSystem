@@ -14,7 +14,7 @@
 | 维度 | 数字 / 事实 |
 |---|---|
 | 后端测试 | **305 项全绿**（0 失败，6 项依赖外部服务的用例默认跳过） |
-| 验证脚本 | **25 个**（`.dsh/`）：隐私与审计 40 项、工具面不变量 39 项、会话链路 25 项、会话 UI 34 项（真实 Chromium）、来源卡片 UI 19 项（真实 Chromium）、RAG 评测（检索指标 + 端到端忠实度） |
+| 验证脚本 | **25 个**（`.dsh/`）：隐私与审计 41 项、工具面不变量 39 项、会话链路 25 项、会话 UI 34 项（真实 Chromium）、来源卡片 UI 19 项（真实 Chromium）、RAG 评测（检索指标 + 端到端忠实度） |
 | Agent 工具 | **33 个**（学生 17 / 教师 7 / 管理员 9），全部为 Spring AI **声明式 `@Tool`**；RAG 开启时增加 1 个跨角色 `search_policy` |
 | 安全闸门 | 角色白名单 → 参数 Schema 校验 → 危险操作人工确认（HITL）→ 审计留痕；另有输出护栏、限流、幂等键 |
 | 多轮记忆 | 会话与消息落 MySQL；模型上下文取最近 N 条；前端会话侧栏（新建/切换/删除、`?conversationId=` 可分享可刷新） |
@@ -182,7 +182,7 @@ npm run dev          # http://localhost:5173
 
 ```bash
 node .dsh/eval-p5-tools.cjs --inventory-only   # 工具面不变量      期望 39/39
-.\.dsh\verify-privacy.ps1                      # 隐私与审计        期望 40/40
+.\.dsh\verify-privacy.ps1                      # 隐私与审计        期望 41/41
 node .dsh/verify-m2-conversations.cjs --no-llm # 会话链路          期望 25/25
 node .dsh/eval-rag.cjs                         # RAG（需 AI_RAG_ENABLED=true）
 mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 305 项

@@ -55,34 +55,38 @@
 > **M3 收尾 ✅**（路由级强制检索、空响应重试、来源卡片 + 出处落库 + 实机验证），全部推送 `origin/main`。
 > 下一步：**① M5 评测/类型检查进 CI → ② M4（多智能体与 MCP）**。
 
-> ### ⏸ 最新暂停状态（2026-09-27 第十轮 = M3 收口 + 来源卡片落库 + **CI 修绿**；下一步：等 CI 全绿确认 + M4/M5）
+> ### ⏸ 最新暂停状态（2026-09-28 第十一轮 = **CI 两个脚本的环境依赖修完，本地三步全绿**；下一步：确认 CI + M4/M5）
 >
-> - **本轮提交**（全部已推 `origin/main`）：
->   `d5d8539` 来源事件 → `2c9824e` 前端卡片 → `5aff7d3` 注入路径也出来源 → `dce1639` 卡片实机验证 19/19
->   → `443b2fb` 出处落库（刷新后卡片仍在）→ `616cf5f` **CI 夹具修复** → `0a36316` **前端大小写修复**。
-> - **⏳ 唯一待确认**：CI 在 `980d1bf` 上的结果。**已经变绿的步骤**（实测 `gh run view`）：
->   `Import schema` ✓ → **`Backend tests (305/6)` ✓** → **`Frontend type check` ✓** →
->   `Package backend` ✓ → `Start backend` ✓ → **`Assertions — tool surface 39/39` ✓**。
->   **还红的是 `Assertions — privacy & audit log`（PASS=25 FAIL=15）**，根因与本轮修的测试**是同一类**：
->   - `[FAIL] teacher payload has rows (seed has evaluations)`、`[FAIL] student still sees own evaluations`
->     —— **脚本也假设了种子数据里有评教记录**（`seed_data.sql` 里一条都没有）。
->     后面 `duplicate rejection`、`fixture: course 2 not yet evaluated`、`cleanup removed the probe row`
->     等失败都是这条缺失引发的连锁反应。
->   - `[FAIL] teacher can change the grade (HTTP 200) -> code 400 请求体格式错误`：**值得单独查**——
->     这种"请求体格式错误"在 CI 的 pwsh（Linux 上的 PowerShell 7）与本机（Windows 5.1）之间
->     最典型的差异是**引号/转义**。先怀疑脚本拼 JSON 的方式，不要怀疑接口。
->   **下一步修法**（照本轮测试的做法）：让脚本**自己造评教夹具**（它已经有一处 course 2 的夹具与清理逻辑，
->   把前面那几条"依赖种子"的断言改成先建夹具再断言），再排查那处 400。
->   `Assertions — conversations` 步骤因前面失败**未执行**，修完 privacy 才会跑到。
->   查看：`gh run list --limit 3` / `gh run view <id>` / `gh run view <id> --log-failed`；
->   `gh` 取日志需要一次性提权（它要写用户目录缓存）。
+> - **本轮提交**（全部已推 `origin/main`）：CI 三步脚本修复（`verify-privacy.ps1` 自带夹具 +
+>   `EDU_MYSQL_ARGS`/`EDU_MYSQL_DB` + 探针失败 abort；`verify-m2-conversations.cjs` 无模型时降级断言）；
+>   细节见 `docs/开发记录.md`（三十二）。
+> - **⏳ 唯一待确认**：GitHub 上这次运行是否**全绿**（`gh run list --limit 3` / `gh run view <id>`；
+>   `--log-failed` 取日志需一次性提权，它要写用户目录缓存）。
+>   上一轮已实测变绿的步骤：`Import` ✓、`Backend tests 305/6` ✓、`Frontend type check` ✓、
+>   `Package` ✓、`Start backend` ✓、`Assertions — tool surface 39/39` ✓。
+> - **本轮修掉的两处"环境依赖"**（都是在**本地造出 CI 等价环境**后才复现的）：
+>   1. **`verify-privacy.ps1`**：15 条失败其实只有两个根因 —— ① 脚本假设"种子里有评教记录"（其实没有）；
+>      ② **CI 里 mysql 探针一条都查不到**：容器只把 3306 发布到 `127.0.0.1`，runner 没有本地 socket，
+>      而脚本用 `mysql -uroot ...`（**没带 `-h`**）→ 连接失败 → `score.id` 取空 →
+>      PUT 体变成 `{"id":,}` → 接口合理回 **400 请求体格式错误** → 还牵连出 500 与一堆 `rows=` 空。
+>      修法：`EDU_MYSQL_ARGS`（CI 传 `-h 127.0.0.1`）+ `EDU_MYSQL_DB`（可指干净库）；
+>      **探针失败立刻 abort（exit 2）并打印实际命令**，不再把基础设施问题伪装成业务断言失败；
+>      评教夹具改为脚本自带（现在 **41 条**，含"夹具已清理"）。
+>   2. **`verify-m2-conversations.cjs`**：`--no-llm` 只是"不断言模型回答**内容**"，脚本**照样发真实对话请求**；
+>      CI 无模型 → 服务端按设计不落空正文 → "助手回复也落库"必然红（本机开着 Ollama 时是绿的）。
+>      已降级为无模型时的**用户侧**断言（仍证明第二轮落库与顺序），助手侧由有模型分支 + 单测覆盖。
+> - **本地验证（照 CI 三步顺序，后端指向干净库 `edujwxt_ci` 且不带任何 AI 环境变量）**：
+>   工具面 **39/39**、隐私审计 **41/41**、会话 **25/25**；有模型时会话脚本 **31/31**。
+>   另验证：abort 路径（bogus client → exit 2）、可重复性（连跑两次 41/41、跑完 `total_evals=0`）。
 > - **已知待办（下次开工，按优先级）**：
->   1. **修 `verify-privacy.ps1` 的种子依赖**（CI 现在只差这一步）——见上面的"唯一待确认"。
->   2. **M5 评测门禁进 CI**：RAG 评测（`eval-rag.cjs --strict-faithfulness`）与来源卡片/会话 UI 的
+>   1. **确认 CI 全绿**；若会话脚本那一步仍偶发，注意它是 HTTP-only、`--no-llm` 已与模型解耦。
+>   2. **可选升级：给 CI 一个"假模型"**（本地起一个 OpenAI 兼容的 SSE 小服务），
+>      这样会话脚本的**强断言**（助手侧落库、护栏残渣）在 CI 里也能真验，而不只是"不报错"。
+>   3. **M5 评测门禁进 CI**：RAG 评测（`eval-rag.cjs --strict-faithfulness`）与来源卡片/会话 UI 的
 >      Playwright 实机验证目前只能本机跑；可加 pgvector service + 假嵌入，或维持"实机验证在本地"。
->   3. **M4**：多智能体 / MCP 方向；可选清理：手写 Registrar 与声明式类的**载荷组装去重**。
+>   4. **M4**：多智能体 / MCP 方向；可选清理：手写 Registrar 与声明式类的**载荷组装去重**。
 > - **本机环境（下次开机先看这里）**：MySQL80 / Redis / `postgresql-x64-16` 三个服务都是**自启动**；
->   后端与前端 dev server **本轮已停止**。
+>   后端与前端 dev server 视情况起（本轮验证期间起过，收工时会停）。
 >   跑 RAG 演示要带环境变量：`AI_RAG_ENABLED=true`、`AI_BASE_URL=http://localhost:11434/v1`、
 >   `AI_MODEL=qwen2.5:7b`、`AI_API_KEY=ollama`（占位）。
 >   数据库迁移本轮已在本机执行：`docs/sql/2026-09-27-ai-message-sources.sql`（`ai_message.sources_json`）。
