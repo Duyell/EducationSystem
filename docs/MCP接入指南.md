@@ -198,5 +198,17 @@ npx -y @modelcontextprotocol/inspector --cli http://localhost:8080/mcp/sse \
   （日志要改走 stderr），尚未实现；
 - **按会话动态工具面**：现在是"配置一个角色面 + 校验令牌角色"，同一实例只服务一个角色的工具面；
 - **resources / prompts 能力**：只声明了 tools（声明了却给不出内容的协议能力不如不声明）；
-- **GUI 客户端实机验证**：协议层已用官方 Inspector CLI 跑通（见第五节），但**尚未在 Cursor /
-  Claude Desktop 的界面里点过一遍**——那属于"客户端配置"这一步，与协议正确性无关。
+- ~~**GUI 客户端实机验证**~~ **✅ 已做（2026-09-28，Cursor）**：协议层先前已用官方 Inspector CLI 跑通；
+  这一轮补上了界面这一半，并因此揪出上面排错表第一条的 4xx 缺陷。**证据**（Cursor 自己的日志
+  `%APPDATA%\Cursor\logs\<会话>\window*\exthost\anysphere.cursor-mcp\MCP user-edu-system.log`）：
+
+  ```
+  21:04:22.044 [info] [V2] Handling DeleteClient action, reason: config_server_modified
+  21:04:23.684 [info] [V2 FSM] connection:connect_start: conn=idle -> conn=connecting
+  21:04:24.189 [info] Successfully connected to sse server
+  21:04:24.234 [info] [V2 FSM] connection:connect_success: conn=connecting -> conn=connected
+  21:04:24.234 [info] CreateClient completed, connected: true, statusType: connected
+  ```
+
+  注意它**先试 streamable HTTP 失败、再回退到 SSE** 的顺序——这正是那条 4xx 契约存在的理由。
+  Claude Desktop 仍未实机（要用 `mcp-remote` 桥接，且本机未安装）。
