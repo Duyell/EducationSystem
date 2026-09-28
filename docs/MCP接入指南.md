@@ -153,9 +153,10 @@ get_my_evaluations      我的评价
 ## 五、自检与排错
 
 ```bash
-# ① 自写脚本：协议级（握手 / tools/list / tools/call / 越权 / 审计），无需模型
+# ① 自写脚本：协议级（握手 / tools/list / tools/call / 越权 / 审计 / 回退契约），无需模型
 node .dsh/verify-mcp.cjs
-#   RESULT: PASS=28 FAIL=0 SKIP=2      <- 本机沙箱下读库的两条会 SKIP（CI 里会真跑）
+#   RESULT: PASS=30 FAIL=0 SKIP=2      <- 本机沙箱下读库的两条会 SKIP（CI 里会真跑）
+#   其中两条专门钉"回退契约"：客户端先 POST 到 /mcp/sse 时必须拿到 4xx（而不是 500），见下方排错表
 
 # ② 官方 MCP Inspector（真实第三方客户端，不需要装 GUI）——本项目已实测通过
 TOKEN=$(curl -s -X POST http://localhost:8080/login -H 'Content-Type: application/json' \

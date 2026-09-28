@@ -47,8 +47,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         properties = "ai.mcp.enabled=true")
 class McpEndpointHttpStatusTest {
 
-    /** 用另一个学生账号：避免把 2023001 的 Redis 令牌顶掉（本机调试 Cursor 时正在用那个） */
-    private static final String USERNAME = "2023002";
+    /**
+     * 用一个**不存在的账号名**，避免与真实账号的 Redis 单会话令牌打架。
+     *
+     * <p>本项目的令牌是"每用户只保留最新一个"（`token:<username>`）：测试若借用
+     * {@code 2023001} / {@code 2023002} 这类账号，就会把别人（或本机正在调试的 MCP 客户端）
+     * 手里的令牌顶掉——表现为"跑完测试后 Cursor 突然 401"，排查起来很费劲。
+     * 而拦截器校验的是"JWT 有效 + 与 Redis 值一致"，并不查用户是否存在于库里，
+     * 所以这里用一个虚构账号最干净。
+     */
+    private static final String USERNAME = "mcp-probe-user";
     private static final String ROLE = "student";
     private static final String REDIS_KEY = "token:" + USERNAME;
 

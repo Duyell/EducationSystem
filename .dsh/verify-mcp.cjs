@@ -247,6 +247,30 @@ async function main() {
     /* ignore */
   }
 
+  // ------------------------------------------------------------------
+  // 1′. 真实客户端的**回退契约**（2026-09-28 由 Cursor 实机连不上揪出来）：
+  //     Cursor / Claude 这类客户端普遍**先试 streamable HTTP**（往 SSE 端点 POST 一条 JSON-RPC），
+  //     拿到 **4xx** 才按协议回退到老式 SSE。此前这里没有匹配的处理器，异常落进全局兜底 →
+  //     回的是 `HTTP 200 + {"code":"500"}`，客户端把它当 JSON-RPC 响应校验失败 →
+  //     既不回退、也说不清原因（Cursor 日志里只有一句 connect_failure）。
+  //     这条断言把"必须回 4xx"这个契约钉进 CI：它比任何单测都更接近真实客户端的走法。
+  phase("1′. 客户端先试 streamable HTTP 时的状态码（回退契约）")
+  const streamableProbe = await fetch(BASE + '/mcp/sse', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      token
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })
+  })
+  const probeBody = await streamableProbe.text()
+  check('POST 到 SSE 端点返回 4xx（5xx 会让客户端放弃回退）',
+    streamableProbe.status >= 400 && streamableProbe.status < 500,
+    'status=' + streamableProbe.status + ' body=' + probeBody.slice(0, 120))
+  check('响应体不是"500 信封"（客户端会把它当 JSON-RPC 解析失败）',
+    !probeBody.includes('"code":"500"'), probeBody.slice(0, 120))
+
   const session = await new McpSession(token).connect()
   check('带 token 能建立 MCP SSE 连接', session.status === 200, 'status=' + session.status)
   check('SSE 返回了 endpoint 事件（消息端点 + sessionId）',
