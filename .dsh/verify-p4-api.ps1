@@ -12,7 +12,24 @@
 # fragments are built from code points -- see the $S_* constants.
 $ErrorActionPreference = 'Continue'
 $base = 'http://localhost:8080'
-$mysql = 'D:\mysql-8.4.7-winx64\mysql-8.4.7-winx64\bin\mysql.exe'
+# mysql client: overridable (CI has mysql on PATH, this dev box has it under D:\mysql).
+# A hard-coded Windows path made the client vanish on CI, and because every caller redirects
+# stderr the failure looked like "fixture residue" instead of "cannot query MySQL".
+$mysql = if ($env:EDU_MYSQL_CLIENT) { $env:EDU_MYSQL_CLIENT } else { 'D:\mysql-8.4.7-winx64\mysql-8.4.7-winx64\bin\mysql.exe' }
+$mysqlArgs = if ($env:EDU_MYSQL_ARGS) { @($env:EDU_MYSQL_ARGS -split '\s+' | Where-Object { $_ -ne '' }) } else { @() }
+
+# Fail fast when the client is unusable: otherwise every count comes back empty and the script
+# reports bogus assertion failures (exactly what happened on the first CI run of this family).
+function RequireSql {
+  $probe = & $mysql @mysqlArgs -uroot -p123456 -D edujwxt -N -B -e 'select 1' 2>$null
+  if ("$probe".Trim() -ne '1') {
+    Write-Host ""
+    Write-Host ("  [ABORT] cannot query MySQL with: " + $mysql + " " + ($mysqlArgs -join ' ')) -ForegroundColor Red
+    Write-Host "          Set EDU_MYSQL_CLIENT / EDU_MYSQL_ARGS (CI needs '-h 127.0.0.1')." -ForegroundColor Red
+    exit 2
+  }
+}
+RequireSql
 $pass = 0; $fail = 0
 
 $TERM = '2024-2025-1'
@@ -46,7 +63,7 @@ function Cleanup {
   $sql = "delete from exam_schedule where remark = '$FIX_MARK'; " +
          "delete es from exam_schedule es join course c on es.course_id = c.id " +
          "where c.course_code in ('CS105','CS106') and c.term = '2024-2025-2';"
-  & $mysql -uroot -p123456 -D edujwxt -N -B -e $sql 2>&1 | Out-Null
+  & $mysql @mysqlArgs -uroot -p123456 -D edujwxt -N -B -e $sql 2>&1 | Out-Null
 }
 
 function Api($method, $path, $token, $body) {

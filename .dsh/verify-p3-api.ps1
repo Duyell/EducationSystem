@@ -14,7 +14,24 @@
 # fragments are built from code points -- see the $S_* constants -- so the file stays ASCII.
 $ErrorActionPreference = 'Continue'
 $base = 'http://localhost:8080'
-$mysql = 'D:\mysql-8.4.7-winx64\mysql-8.4.7-winx64\bin\mysql.exe'
+# mysql client: overridable (CI has mysql on PATH, this dev box has it under D:\mysql).
+# A hard-coded Windows path made the client vanish on CI, and because every caller redirects
+# stderr the failure looked like "fixture residue" instead of "cannot query MySQL".
+$mysql = if ($env:EDU_MYSQL_CLIENT) { $env:EDU_MYSQL_CLIENT } else { 'D:\mysql-8.4.7-winx64\mysql-8.4.7-winx64\bin\mysql.exe' }
+$mysqlArgs = if ($env:EDU_MYSQL_ARGS) { @($env:EDU_MYSQL_ARGS -split '\s+' | Where-Object { $_ -ne '' }) } else { @() }
+
+# Fail fast when the client is unusable: otherwise every count comes back empty and the script
+# reports bogus assertion failures (exactly what happened on the first CI run of this family).
+function RequireSql {
+  $probe = & $mysql @mysqlArgs -uroot -p123456 -D edujwxt -N -B -e 'select 1' 2>$null
+  if ("$probe".Trim() -ne '1') {
+    Write-Host ""
+    Write-Host ("  [ABORT] cannot query MySQL with: " + $mysql + " " + ($mysqlArgs -join ' ')) -ForegroundColor Red
+    Write-Host "          Set EDU_MYSQL_CLIENT / EDU_MYSQL_ARGS (CI needs '-h 127.0.0.1')." -ForegroundColor Red
+    exit 2
+  }
+}
+RequireSql
 $pass = 0; $fail = 0
 
 $TERM_OPEN = '2024-2025-1'
@@ -63,7 +80,7 @@ function Cleanup {
          "delete from selection_round_scope where round_id in (select id from selection_round where term = '$TERM_FIX'); " +
          "delete from selection_round where term = '$TERM_FIX'; " +
          "delete from course where term = '$TERM_FIX';"
-  & $mysql -uroot -p123456 -D edujwxt -N -B -e $sql 2>&1 | Out-Null
+  & $mysql @mysqlArgs -uroot -p123456 -D edujwxt -N -B -e $sql 2>&1 | Out-Null
 }
 
 function Api($method, $path, $token, $body) {
@@ -236,7 +253,7 @@ Check 'create fixture course (slot B)' ($mk.code -eq '200') (Brief $mk)
 # Grab its id FIRST: after the rename, looking up "CS101" would find the seeded CS101 row
 # instead (which the student has also already selected, masking the check under test).
 $idPassed = CourseIdByCode $C_PASSED $admin
-& $mysql -uroot -p123456 -D edujwxt -N -B -e "update course set course_code = 'CS101' where id = $idPassed;" 2>&1 | Out-Null
+& $mysql @mysqlArgs -uroot -p123456 -D edujwxt -N -B -e "update course set course_code = 'CS101' where id = $idPassed;" 2>&1 | Out-Null
 
 $idOpen = CourseIdByCode $C_OPEN $admin
 $idBig = CourseIdByCode $C_BIG $admin
@@ -247,7 +264,7 @@ Check 'fixture courses are queryable' (($idOpen -gt 0) -and ($idBig -gt 0) -and 
 
 # Timetables: A occupies Monday 1-2; B occupies Monday 2-3 -> they overlap at period 2.
 $now = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
-& $mysql -uroot -p123456 -D edujwxt -N -B -e "insert into class_time(course_id, weekday, start_period, end_period, start_week, end_week, room_id) values ($idA, 1, 1, 2, 1, 16, (select id from room where room_name = concat(char(0xE6,0x95,0x99 using utf8mb4), '1-101') limit 1)), ($idB, 1, 2, 3, 1, 16, (select id from room where room_name = concat(char(0xE6,0x95,0x99 using utf8mb4), '1-102') limit 1));" 2>&1 | Out-Null
+& $mysql @mysqlArgs -uroot -p123456 -D edujwxt -N -B -e "insert into class_time(course_id, weekday, start_period, end_period, start_week, end_week, room_id) values ($idA, 1, 1, 2, 1, 16, (select id from room where room_name = concat(char(0xE6,0x95,0x99 using utf8mb4), '1-101') limit 1)), ($idB, 1, 2, 3, 1, 16, (select id from room where room_name = concat(char(0xE6,0x95,0x99 using utf8mb4), '1-102') limit 1));" 2>&1 | Out-Null
 
 # Round: open now, 30 credit cap, no scope (= unrestricted)
 $roundBody = @{
@@ -305,7 +322,7 @@ Check 'the conflict names the clashing course code' ($r.msg.Contains($C_A)) ("ms
 Check 'the conflict describes weekday/periods/weeks' ($r.msg -match '1-2') ("msg=" + $r.msg)
 
 # adjacency must NOT conflict: shrink B to period 3-4 only (adjacent to A's 1-2)
-& $mysql -uroot -p123456 -D edujwxt -N -B -e "update class_time set start_period = 3, end_period = 4 where course_id = $idB;" 2>&1 | Out-Null
+& $mysql @mysqlArgs -uroot -p123456 -D edujwxt -N -B -e "update class_time set start_period = 3, end_period = 4 where course_id = $idB;" 2>&1 | Out-Null
 $r = Api 'POST' "/course-selection/select/$idB" $stu1 $null
 Check 'adjacent slot does NOT conflict and selects fine' ($r.code -eq '200') (Brief $r)
 

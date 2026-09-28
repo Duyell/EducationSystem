@@ -11,7 +11,24 @@
 # "password on the command line" warning to stderr, which PowerShell would
 # otherwise treat as a terminating error.
 $ErrorActionPreference = 'Continue'
-$mysql = 'D:\mysql-8.4.7-winx64\mysql-8.4.7-winx64\bin\mysql.exe'
+# mysql client: overridable (CI has mysql on PATH, this dev box has it under D:\mysql).
+# A hard-coded Windows path made the client vanish on CI, and because every caller redirects
+# stderr the failure looked like "fixture residue" instead of "cannot query MySQL".
+$mysql = if ($env:EDU_MYSQL_CLIENT) { $env:EDU_MYSQL_CLIENT } else { 'D:\mysql-8.4.7-winx64\mysql-8.4.7-winx64\bin\mysql.exe' }
+$mysqlArgs = if ($env:EDU_MYSQL_ARGS) { @($env:EDU_MYSQL_ARGS -split '\s+' | Where-Object { $_ -ne '' }) } else { @() }
+
+# Fail fast when the client is unusable: otherwise every count comes back empty and the script
+# reports bogus assertion failures (exactly what happened on the first CI run of this family).
+function RequireSql {
+  $probe = & $mysql @mysqlArgs -uroot -p123456 -D edujwxt -N -B -e 'select 1' 2>$null
+  if ("$probe".Trim() -ne '1') {
+    Write-Host ""
+    Write-Host ("  [ABORT] cannot query MySQL with: " + $mysql + " " + ($mysqlArgs -join ' ')) -ForegroundColor Red
+    Write-Host "          Set EDU_MYSQL_CLIENT / EDU_MYSQL_ARGS (CI needs '-h 127.0.0.1')." -ForegroundColor Red
+    exit 2
+  }
+}
+RequireSql
 $db = 'edujwxt_validate'
 $repo = 'D:\work\jwxt\EducationSystem'
 
@@ -37,19 +54,19 @@ foreach ($src in $sources) {
 }
 
 Write-Host '--- creating temp database ---'
-& $mysql -uroot -p123456 -e "DROP DATABASE IF EXISTS $db; CREATE DATABASE $db DEFAULT CHARACTER SET utf8mb4;" 2>$null
+& $mysql @mysqlArgs -uroot -p123456 -e "DROP DATABASE IF EXISTS $db; CREATE DATABASE $db DEFAULT CHARACTER SET utf8mb4;" 2>$null
 
 $fail = 0
 foreach ($p in $prepared) {
   Write-Host ("--- importing {0} ---" -f (Split-Path $p -Leaf))
-  $out = & $mysql -uroot -p123456 --default-character-set=utf8mb4 $db -e "source $p" 2>&1
+  $out = & $mysql @mysqlArgs -uroot -p123456 --default-character-set=utf8mb4 $db -e "source $p" 2>&1
   $errors = $out | Where-Object { $_ -match 'ERROR' }
   if ($errors) { $errors | ForEach-Object { "  $_" }; $fail++ }
   else { Write-Host '  ok' }
 }
 
 Write-Host '--- row counts in temp db ---'
-& $mysql -uroot -p123456 $db -N -e @"
+& $mysql @mysqlArgs -uroot -p123456 $db -N -e @"
 SELECT 'college',COUNT(*) FROM v_college UNION ALL
 SELECT 'major',COUNT(*) FROM v_major UNION ALL
 SELECT 'clazz',COUNT(*) FROM v_clazz UNION ALL
@@ -72,7 +89,7 @@ SELECT 'exam_schedule',COUNT(*) FROM v_exam_schedule;
 "@ 2>$null | ForEach-Object { "  $_" }
 
 Write-Host '--- data integrity spot checks ---'
-& $mysql -uroot -p123456 $db -N -e @"
+& $mysql @mysqlArgs -uroot -p123456 $db -N -e @"
 SELECT CONCAT('course with null course_code: ', COUNT(*)) FROM v_course WHERE course_code IS NULL OR course_code='';
 SELECT CONCAT('score with null passed: ', COUNT(*)) FROM v_score WHERE passed IS NULL;
 SELECT CONCAT('score with null makeup_score (expected, only makeup rows have it): ', COUNT(*)) FROM v_score WHERE makeup_score IS NULL;
@@ -107,7 +124,7 @@ SELECT CONCAT('overlapping exams sharing a room: ', COUNT(*)) FROM v_exam_schedu
 "@ 2>$null | ForEach-Object { "  $_" }
 
 Write-Host '--- cleanup ---'
-& $mysql -uroot -p123456 -e "DROP DATABASE IF EXISTS $db;" 2>$null
+& $mysql @mysqlArgs -uroot -p123456 -e "DROP DATABASE IF EXISTS $db;" 2>$null
 foreach ($p in $prepared) { Remove-Item $p -ErrorAction SilentlyContinue }
 
 if ($fail -gt 0) { Write-Host ("FAILED: {0} file(s) had import errors" -f $fail) }
