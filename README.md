@@ -214,9 +214,10 @@ mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 
 ├── frontend/edu-system-client/    # Vue 3 + Vite（views/ 21 个页面、composables/、api/）
 ├── docs/
 │   ├── Agent化升级计划.md          # 里程碑、验收标准、接续指南（**开工先读**）
-│   ├── 开发记录.md                 # 追加式开发日志（30 条，倒序，含所有踩坑）
+│   ├── 开发记录.md                 # 追加式开发日志（34 条，倒序，含所有踩坑）
 │   ├── AI模块架构文档.md           # AI 模块逐层详解 + M2/M3 设计
 │   ├── 教务业务扩展设计.md          # P1–P5 业务规则权威文档
+│   ├── MCP接入指南.md             # 把工具面接进 Cursor / Claude Desktop 的步骤与排错
 │   ├── policies/                  # 11 份制度文档（RAG 语料，也是业务规则的制度依据）
 │   └── sql/                       # 10 个幂等迁移脚本
 ├── .dsh/                          # 26 个验证/评测脚本（含 CI 假模型）+ redis 配置 + 项目级技能
@@ -271,8 +272,9 @@ mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 
 | 想了解 | 看哪里 |
 |---|---|
 | **拿这个项目当教材学 Agent（学习地图 + 面试要点清单）** | `docs/Agent学习地图与面试要点.md` |
+| **想让 Cursor / Claude Desktop 用上这个项目的工具面（MCP）** | `docs/MCP接入指南.md` |
 | **下次开工怎么接** | `docs/Agent化升级计划.md` 顶部的"接续指南" |
-| 做过什么、踩过哪些坑（信息量最大） | `docs/开发记录.md`（倒序，30 条） |
+| 做过什么、踩过哪些坑（信息量最大） | `docs/开发记录.md`（倒序，34 条） |
 | AI 模块怎么运作、为什么这么设计 | `docs/AI模块架构文档.md` |
 | 教务业务规则（学分/绩点/冲突判定…） | `docs/教务业务扩展设计.md` + `docs/policies/` |
 | 前端规范 | `docs/技能使用规范.md` |

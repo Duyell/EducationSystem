@@ -67,9 +67,9 @@ jobs:
           done
 
       # ① 后端全量测试（默认跳过需要真实模型的用例）
-      # ⚠️ 期望数字必须跟着测试数一起改：写死"296"时新增测试会让这一步的**名字**变成谎话
+      # ⚠️ 期望数字必须跟着测试数一起改：写死数字时新增测试会让这一步的**名字**变成谎话
       # （数字只写在名字里，不参与判定——真正的判定是 mvn 的退出码）。
-      - name: Backend tests (expect 305 passed, 6 skipped)
+      - name: Backend tests (expect 312 passed, 6 skipped)
         working-directory: backend/edu-system-server
         run: mvn -B test -pl edu-api -am
 

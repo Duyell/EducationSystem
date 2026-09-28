@@ -72,12 +72,12 @@
 >   **PASS=28 FAIL=0 SKIP=2**（SKIP 是本机沙箱读不到库，已手工复核那两条：危险工具 0→0 未执行、
 >   审计有 `get_my_gpa|mcp:<会话号>|SUCCESS`）；后端全量 **312 项全绿**。
 >   CI 已加一步 `Assertions — MCP server`（CI 后端带 `AI_MCP_ENABLED=true` 启动）。
-> - **⏳ 待确认**：这次推送的 CI 是否仍全绿（新增了 MCP 步骤）。
+> - **⏳ 待确认**：无（CI 在 `c624eb7` 上已全绿，含新增的 `Assertions — MCP server` 步骤）。
 > - **已知待办（下次开工）**：
->   1. **把 MCP 用起来/讲出来**：目前只有协议级脚本验证；可选 ① 写一份 `docs/MCP接入指南.md`
->      （Cursor / Claude Desktop 的配置示例 + 截图），② 加 **stdio 传输**（`spring-ai-starter-mcp-server`
->      或 SDK 的 stdio provider），让不支持 HTTP 的客户端也能用，③ **按会话决定工具面**（现在是
->      "配置一个角色面 + 校验令牌角色"，更彻底的做法是按令牌角色动态注册工具面）。
+>   1. **把 MCP 用起来/讲出来**：已补 `docs/MCP接入指南.md`（Cursor / Claude Desktop 配置、令牌获取、
+>      安全边界、排错表）。仍可选：① 加 **stdio 传输**（让 Claude Desktop 免桥接），
+>      ② **按会话决定工具面**（现在是"配置一个角色面 + 校验令牌角色"，同一实例只服务一个角色），
+>      ③ 在真实客户端里实测一次（目前只有自写脚本走完整协议）。
 >   2. **M5 收尾**：RAG 检索/接线进 CI（pgvector service + 假嵌入，复用假模型那套思路）。
 >   3. **可选清理**：手写 Registrar 与声明式类的载荷组装去重；来源卡片/会话 UI 的 Playwright 是否进 CI。
 > - **本机环境（下次开机先看这里）**：MySQL80 / Redis / `postgresql-x64-16` 三个服务都是**自启动**；
