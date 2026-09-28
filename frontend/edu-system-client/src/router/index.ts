@@ -129,6 +129,12 @@ const routes = [
         path: 'my-exams',
         component: () => import('../views/my-exams/index.vue'),
         meta: { roles: ['student'] }
+      },
+      {
+        // 成绩变更日志（管理员，只读）：/score/change-log —— 谁在什么时候把谁的成绩改成多少
+        path: 'score-change-log',
+        component: () => import('../views/score-change-log/index.vue'),
+        meta: { roles: ['admin'] }
       }
     ]
   }

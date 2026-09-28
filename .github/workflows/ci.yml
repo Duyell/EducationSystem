@@ -88,6 +88,13 @@ jobs:
           npm ci
           npm run type-check
 
+      # ⑤ 前端单测（vitest，纯函数、无需浏览器）。
+      #    目前覆盖"成绩变更日志"页的差异推导——那一页的全部价值就是回答"改前是多少、改后是多少"，
+      #    推导错了页面照样渲染、类型检查照样通过，所以必须有单测盯着（15 项）。
+      - name: Frontend unit tests (vitest)
+        working-directory: frontend/edu-system-client
+        run: npx vitest run
+
       # ③ 起后端（背后是④那个不会真思考的假模型），跑三套断言脚本
       - name: Package backend
         working-directory: backend/edu-system-server

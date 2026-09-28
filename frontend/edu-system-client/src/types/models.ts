@@ -784,3 +784,51 @@ export interface PolicySource {
   section?: string
   citation: string
 }
+
+/**
+ * 一条成绩变更记录（管理员视角，`GET /score/change-log`）。
+ *
+ * 字段刻意分成 `before*` / `after*` 两组：成绩申诉时唯一有用的问题是"**改前是多少、改后是多少**"，
+ * 只记"被改过"等于没记（制度依据 JW-09 §4.5：成绩是可申诉数据，界面直接改也必须留痕）。
+ *
+ * 数值型字段是 Java `BigDecimal`，Jackson 序列化成 JSON number；`null` 表示"当时没有这个成绩项"
+ * （例如没有补考成绩），与"0 分"是两件事，所以类型里显式带上 `null`。
+ */
+export interface ScoreChangeLog {
+  id: number
+  /** 操作人（学号/工号/用户名） */
+  operatorId: string
+  /** 操作人角色：student / teacher / admin */
+  operatorRole: string
+  /** 来源：UI（界面或接口）/ AI（智能助手）——申诉时要找的是人，所以这两者必须区分 */
+  source: string
+  /** INSERT / UPDATE / DELETE */
+  operation: string
+  scoreId?: number | null
+  courseId?: number | null
+  studentId: string
+  beforeUsual?: number | null
+  beforeExam?: number | null
+  beforeMakeup?: number | null
+  beforeTotal?: number | null
+  /** 1=通过 / 0=未通过 */
+  beforePassed?: number | null
+  afterUsual?: number | null
+  afterExam?: number | null
+  afterMakeup?: number | null
+  afterTotal?: number | null
+  afterPassed?: number | null
+  createTime: string
+  /** 展示用扩展字段（后端 join 出来的，管理员不必再自己翻译 id） */
+  courseName?: string
+  courseCode?: string
+  studentName?: string
+}
+
+/** 成绩变更日志的筛选条件（空 = 不筛） */
+export interface ScoreChangeLogQuery {
+  studentId: string
+  operatorId: string
+  /** 课程 id；用 string 承载输入框内容，提交前转成数字（避免空串发成 `courseId=` 被 Spring 判 400） */
+  courseId: string
+}

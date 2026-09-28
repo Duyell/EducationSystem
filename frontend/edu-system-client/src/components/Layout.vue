@@ -124,7 +124,8 @@ const adminMenuList = [
   { name: '教室管理', path: '/room' },
   { name: '排课审批', path: '/schedule-approve' },
   { name: '选课轮次', path: '/selection-round' },
-  { name: '考试安排', path: '/exam-manage' }
+  { name: '考试安排', path: '/exam-manage' },
+  { name: '成绩变更日志', path: '/score-change-log' }
 ]
 
 // 教师与学生共用的基础菜单。
