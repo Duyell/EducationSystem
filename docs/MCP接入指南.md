@@ -203,12 +203,14 @@ npx -y @modelcontextprotocol/inspector --cli http://localhost:8080/mcp/sse \
   `%APPDATA%\Cursor\logs\<会话>\window*\exthost\anysphere.cursor-mcp\MCP user-edu-system.log`）：
 
   ```
-  21:04:22.044 [info] [V2] Handling DeleteClient action, reason: config_server_modified
-  21:04:23.684 [info] [V2 FSM] connection:connect_start: conn=idle -> conn=connecting
-  21:04:24.189 [info] Successfully connected to sse server
-  21:04:24.234 [info] [V2 FSM] connection:connect_success: conn=connecting -> conn=connected
-  21:04:24.234 [info] CreateClient completed, connected: true, statusType: connected
+  21:06:18.575 [info] [V2] Handling CreateClient action
+  21:06:18.851 [warning] Error connecting to streamableHttp server, falling back to SSE:
+                      Streamable HTTP error: Error POSTing to endpoint: {"code":"404","msg":"接口不存在: mcp/sse","data":null}
+  21:06:19.038 [info] Successfully connected to sse server
+  21:06:19.219 [info] [V2 FSM] connection:connect_success: conn=connecting -> conn=connected
+  21:06:19.219 [info] CreateClient completed, connected: true, statusType: connected
   ```
 
-  注意它**先试 streamable HTTP 失败、再回退到 SSE** 的顺序——这正是那条 4xx 契约存在的理由。
+  这两行放在一起就是那条 4xx 契约的全部意义：**"falling back to SSE" 是被我们的 404 触发的**
+  （同一个客户端、同一份配置，此前回 500 时它直接 `connect_failure`、连回退都不试）。
   Claude Desktop 仍未实机（要用 `mcp-remote` 桥接，且本机未安装）。
