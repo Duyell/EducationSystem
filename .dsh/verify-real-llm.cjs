@@ -25,8 +25,9 @@ const STUDENT = {
 };
 const MESSAGE = argVal('--message', '帮我选课，课程ID是5');
 const AUTO_CONFIRM = !args.includes('--no-confirm');
-// 预期是否涉及危险操作。只读查询（查课程/查成绩）不该弹确认卡片，
-// 若脚本一律要求 confirm 事件，会把正常行为误报为失败。
+// 是否**要求**出现确认卡片。默认不再二选一写死：脚本从 status 事件的 riskLevel 判断模型实际选了
+// 什么风险等级的工具，再断言"危险 ⇒ 有卡片、非危险 ⇒ 没卡片"这条不变量。
+// `--expect-confirm` 作为显式覆盖保留（例如模型没选工具、但你想强制要求卡片时）。
 const EXPECT_CONFIRM = args.includes('--expect-confirm');
 
 let pass = 0, fail = 0;
@@ -139,9 +140,21 @@ function request(method, path, { token, body } = {}) {
   check('未出现 error 事件', !types.includes('error'),
     events.filter((e) => e.type === 'error').map((e) => e.content).join(' | '));
 
-  if (EXPECT_CONFIRM) {
+  // 风险分级是**不变量**，不是"这次一定会/一定不会出现卡片"：
+  //   模型选了 DANGEROUS 工具 → 必须挂起等确认；没选到危险工具 → 不该出现卡片。
+  // 为什么不能写死：选哪个工具是模型行为（7B 偶尔选错），实测就撞上过 ——
+  // 默认消息「帮我选课，课程ID是5」本来就该弹卡片，而脚本原先的默认期望是"不弹"，
+  // 于是把**正确**的风险分级报成了失败。（chosenRisks 取自 status 事件里的 riskLevel。）
+  const chosenRisks = [
+    ...new Set(events.filter((e) => e.type === 'status' && e.riskLevel).map((e) => e.riskLevel)),
+  ];
+  const sawDangerous = chosenRisks.includes('DANGEROUS');
+  const sawConfirm = types.includes('confirm');
+
+  if (EXPECT_CONFIRM || sawDangerous) {
     // 危险操作：必须挂起等确认，绝不能直接执行
-    check('收到 confirm 事件（危险操作被挂起，未直接执行）', types.includes('confirm'));
+    check('危险操作被挂起等确认（风险分级正确）', sawConfirm,
+      'chosen risks=' + JSON.stringify(chosenRisks));
     check('收到 confirm_result 事件（确认结果已回传）', types.includes('confirm_result'));
     if (confirmEvent) {
       check('确认事件只出现一次（未重复挂起）', types.filter((t) => t === 'confirm').length === 1);
@@ -150,12 +163,13 @@ function request(method, path, { token, body } = {}) {
       const ar = events.filter((e) => e.type === 'confirm_result');
       check('confirm_result 标记为已批准', ar.length > 0 && ar[0].approved === true,
         JSON.stringify(ar));
-    } else {
+    } else if (EXPECT_CONFIRM) {
       console.log('    ⚠️ 未收到 confirm 事件 —— 模型可能没选择调用工具');
     }
   } else {
-    // 只读查询：不应出现确认卡片（出现反而说明风险分级判错了）
-    check('只读查询未弹出确认卡片（风险分级正确）', !types.includes('confirm'));
+    // 没选到危险工具：不应出现确认卡片（出现反而说明风险分级判错了）
+    check('未选到危险工具时不应弹出确认卡片（风险分级正确）', !sawConfirm,
+      'chosen risks=' + JSON.stringify(chosenRisks));
   }
 
   const fullText = events.filter((e) => e.type === 'token').map((e) => e.content).join('');

@@ -14,7 +14,7 @@
 | 维度 | 数字 / 事实 |
 |---|---|
 | 后端测试 | **312 项全绿**（0 失败，6 项依赖外部服务的用例默认跳过） |
-| 验证脚本 | **26 个**（`.dsh/`）：工具面 39、隐私与审计 41、会话链路 31（含强断言）、MCP 协议级、会话/来源卡片 UI 实机（真实 Chromium）、RAG 评测（检索指标 + 端到端忠实度） |
+| 验证脚本 | **28 个**（`.dsh/`）：**11 套链路断言已进 CI**（工具面 39、隐私与审计 41、会话 31、MCP 协议级、M1 安全底座、P1 读/写、P2 排课、P3 选课轮次、P4 考试、学业预警），另有 RAG 评测（检索指标 + 忠实度）、7 个 Playwright 实机脚本、以及假模型/排查工具 |
 | Agent 工具 | **33 个**（学生 17 / 教师 7 / 管理员 9），全部为 Spring AI **声明式 `@Tool`**；RAG 开启时增加 1 个跨角色 `search_policy` |
 | 对外能力（MCP） | **MCP server**（官方 Java SDK 0.18.3 + SSE）：默认开放学生 **14 个只读工具**给外部客户端；`DANGEROUS` 永不外放，`WRITE` 需显式开启 |
 | 安全闸门 | 角色白名单 → 参数 Schema 校验 → 危险操作人工确认（HITL）→ 审计留痕；另有输出护栏、限流、幂等键 |
@@ -114,7 +114,7 @@
 | 存储 | MySQL 8（业务）、Redis（登录态/限流）、PostgreSQL 16 + pgvector（向量） |
 | AI | **Spring AI 1.0.9** + 本地 **Ollama**（`qwen2.5:7b` 对话、`bge-m3` 嵌入）；也支持任何 OpenAI 兼容端点 |
 | 对外协议 | **MCP（Model Context Protocol）Java SDK 0.18.3** + SSE 传输：把工具面开放给 Claude Desktop / Cursor 等外部客户端 |
-| 测试与验证 | JUnit 5、Playwright（会话 UI 与来源卡片实机验证）、26 个 `.dsh` 脚本 + **CI 用的确定性假模型** `.dsh/fake-model.cjs`（OpenAI 兼容 SSE 桩：文本 / 工具调用 / HITL 三种模式） |
+| 测试与验证 | JUnit 5、Playwright（7 个实机脚本：P1–P4 页面、会话侧栏、来源卡片、学业预警）、28 个 `.dsh` 脚本 + **CI 用的确定性假模型** `.dsh/fake-model.cjs`（OpenAI 兼容 SSE 桩：文本 / 工具调用 / HITL 三种模式） |
 | CI | GitHub Actions：导入建表与种子数据 → 312 项后端测试 → 前端 `vue-tsc` → 起**假模型**+后端（带 `AI_MCP_ENABLED=true`）→ 四套断言（工具面 39 / 隐私审计 41 / 会话 31 / MCP 协议级）。需要真实模型的质量评测不进 CI |
 
 ---
@@ -220,7 +220,7 @@ mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 
 │   ├── MCP接入指南.md             # 把工具面接进 Cursor / Claude Desktop 的步骤与排错
 │   ├── policies/                  # 11 份制度文档（RAG 语料，也是业务规则的制度依据）
 │   └── sql/                       # 10 个幂等迁移脚本
-├── .dsh/                          # 26 个验证/评测脚本（含 CI 假模型）+ redis 配置 + 项目级技能
+├── .dsh/                          # 28 个验证/评测/排查脚本（含 CI 假模型）+ redis 配置 + 项目级技能
 ├── edujwxt.sql / seed_data.sql    # 建表与演示数据
 └── docker-compose.yml             # 容器化编排（与本地原生开发路径不同，见已知限制）
 ```
