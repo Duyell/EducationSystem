@@ -150,6 +150,15 @@ Check 'student 2023001 login' ($null -ne $stu1)
 Check 'student 2023002 login' ($null -ne $stu2)
 Check 'teacher 10001 login' ($null -ne $teacher)
 
+# Baseline for the final "seeded selections intact" check.
+# It used to assert a literal 6 (the number this dev box happened to have after demo runs), while
+# a clean seed has 4 -- so the script passed locally and failed on CI. What the check actually
+# wants to prove is an INVARIANT: this script's own fixtures must not disturb the student's
+# pre-existing selections. Comparing against a baseline captured up front proves exactly that,
+# on any database.
+$selBefore = Cnt (Api 'GET' '/course-selection/my-ids' $stu1 $null).data
+Check 'baseline: the student has pre-existing selections to protect' ($selBefore -ge 1) "count=$selBefore"
+
 # ============================================================
 Write-Host "`n=== 1. permissions ===" -ForegroundColor Cyan
 $anonPaths = @(
@@ -438,7 +447,7 @@ Check 'fixture round removed' ((Cnt $leftover) -eq 0) ("leftover=" + (Cnt $lefto
 $r = Api 'GET' "/selection-round/current?term=$TERM_OPEN" $stu1 $null
 Check 'seeded open round still open' ($r.data.canSelect -eq $true) (Brief $r)
 $r = Api 'GET' "/course-selection/my-ids" $stu1 $null
-Check 'seeded selections intact' ((Cnt $r.data) -eq 6) ("count=" + (Cnt $r.data))
+Check 'seeded selections intact' ((Cnt $r.data) -eq $selBefore) ("count=" + (Cnt $r.data) + " baseline=" + $selBefore)
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host ("RESULT: PASS=" + $pass + "  FAIL=" + $fail) -ForegroundColor $(if ($fail -eq 0) { 'Green' } else { 'Red' })
