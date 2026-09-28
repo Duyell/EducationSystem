@@ -70,12 +70,17 @@ curl -s -X POST http://localhost:8080/login \
 {
   "mcpServers": {
     "edu-system": {
-      "url": "http://localhost:8080/mcp/sse",
+      "type": "sse",
+      "url": "http://127.0.0.1:8080/mcp/sse",
       "headers": { "token": "把上一步的 token 粘在这里" }
     }
   }
 }
 ```
+
+> `"type": "sse"` 是**实测加上去的**（2026-09-28）：不写它，Cursor 会把 URL 当 streamable HTTP 去 POST，
+> 而我们这个端点是 SSE 传输（只收 GET）。用 `127.0.0.1` 而不是 `localhost` 只是为了少一个解析变量
+> （本机 `localhost` 会同时解析出 `::1` 与 `127.0.0.1`）。
 
 **Claude Desktop**（它只认 stdio，用官方桥接器 `mcp-remote` 转发到我们的 SSE 端点）：
 
@@ -174,12 +179,15 @@ npx -y @modelcontextprotocol/inspector --cli http://localhost:8080/mcp/sse \
 
 | 现象 | 原因 / 处理 |
 |---|---|
+| 客户端显示 `connection:connect_failure`，日志里是 `Transient error connecting to streamableHttp server` + `Unrecognized keys: "code", "msg", "data"` | **已经修过的坑（2026-09-28）**：MCP 客户端普遍**先往 `/mcp/sse` 试 streamable HTTP**（POST 一条 JSON-RPC），拿到 **4xx** 才按协议回退到 SSE。此前我们这里没有匹配的处理器，异常落进全局兜底 → 回的是 `HTTP 200 + {"code":"500","msg":"服务器内部错误"}`，客户端把它当"JSON-RPC 响应解析失败"，于是**既不回退也说不清原因**。现在 POST 到 SSE 端点会正确回 **404**（`GlobalExceptionHandler` 新增 `NoResourceFoundException`/`HttpRequestMethodNotSupportedException` 处理）。**自检命令**：`curl -s -o - -w "%{http_code}" -X POST -H "token: $TOKEN" http://127.0.0.1:8080/mcp/sse` → 应为 **404**，绝不能是 500 |
+| 客户端把 URL 当成 streamable HTTP（不试 SSE） | 在配置里显式声明传输类型：Cursor 的 `~/.cursor/mcp.json` 里给该 server 加 `"type": "sse"`；Claude Desktop 走 `mcp-remote` 桥接（见第二步） |
 | 客户端连不上，日志 401 | token 没带、写错、或已过期；重新登录取一个。注意本项目用的是 **`token`** 头，不是 `Authorization` |
 | 能连上但调工具被拒，提示"角色不符" | 服务端 `AI_MCP_ROLE` 与 token 的角色不一致：换对应角色的账号，或改 `AI_MCP_ROLE` 重启 |
 | 工具列表里没有"选课/退课/评教" | **这是设计**，不是 bug，见上面的安全边界 |
 | 想让教师/管理员也能用 | 一台实例一个角色面（`AI_MCP_ROLE`）。要同时支持多角色得按会话动态注册工具面，尚未实现 |
 | 改了工具却在客户端看不到 | 客户端会缓存工具列表，重启客户端或重连 |
 | 调用报 `tool_not_found` | 该工具没有被这个实例开放（按角色/风险等级过滤）；见启动日志里的 `[MCP 排除]` 行 |
+| 「工具数 14」但聊天里一个工具都不出现 | 配置改完要**在客户端里把该 server toggle 一次**（或重启客户端）才会重连；Cursor 的排查入口是 `Ctrl+Shift+U` → Output → **MCP Logs** |
 
 ---
 

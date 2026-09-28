@@ -13,7 +13,7 @@
 
 | 维度 | 数字 / 事实 |
 |---|---|
-| 后端测试 | **324 项全绿**（0 失败，6 项依赖外部服务的用例默认跳过） |
+| 后端测试 | **326 项全绿**（0 失败，6 项依赖外部服务的用例默认跳过） |
 | 前端测试 | **单测 15 例**（Vitest，`npx vitest run`；`npm run test:unit` 是 watch 模式）+ **8 个 Playwright 实机脚本**（P1–P4 页面、会话侧栏、来源卡片、学业预警、成绩变更日志） |
 | 验证脚本 | **30 个**（`.dsh/`）：**11 套链路断言已进 CI**（工具面 39、隐私与审计 41、会话 31、MCP 协议级、M1 安全底座、P1 读/写、P2 排课、P3 选课轮次、P4 考试、学业预警），另有 RAG 评测（检索指标 + 忠实度）、以及假模型/排查工具 |
 | Agent 工具 | **33 个**（学生 17 / 教师 7 / 管理员 9），全部为 Spring AI **声明式 `@Tool`**；RAG 开启时增加 1 个跨角色 `search_policy` |
@@ -116,7 +116,7 @@
 | AI | **Spring AI 1.0.9** + 本地 **Ollama**（`qwen2.5:7b` 对话、`bge-m3` 嵌入）；也支持任何 OpenAI 兼容端点 |
 | 对外协议 | **MCP（Model Context Protocol）Java SDK 0.18.3** + SSE 传输：把工具面开放给 Claude Desktop / Cursor 等外部客户端 |
 | 测试与验证 | JUnit 5、Vitest、Playwright（8 个实机脚本：P1–P4 页面、会话侧栏、来源卡片、学业预警、成绩变更日志）、30 个 `.dsh` 脚本 + **CI 用的确定性假模型** `.dsh/fake-model.cjs`（OpenAI 兼容 SSE 桩：文本 / 工具调用 / HITL 三种模式） |
-| CI | GitHub Actions：导入建表与种子数据 → 324 项后端测试 → 前端 `vue-tsc` + 前端单测 15 例 → 起**假模型**+后端（带 `AI_MCP_ENABLED=true`）→ **11 套断言**（工具面 39 / 隐私审计 41 / 会话 31 / MCP 协议级 / M1 / P1 读·写 / P2 / P3 / P4 / 学业预警）。需要真实模型的质量评测、需要 pgvector 的检索评测、以及 Playwright 实机不进 CI |
+| CI | GitHub Actions：导入建表与种子数据 → 326 项后端测试 → 前端 `vue-tsc` + 前端单测 15 例 → 起**假模型**+后端（带 `AI_MCP_ENABLED=true`）→ **11 套断言**（工具面 39 / 隐私审计 41 / 会话 31 / MCP 协议级 / M1 / P1 读·写 / P2 / P3 / P4 / 学业预警）。需要真实模型的质量评测、需要 pgvector 的检索评测、以及 Playwright 实机不进 CI |
 
 ---
 
@@ -205,7 +205,7 @@ node .dsh/verify-m2-conversations.cjs          # 会话链路（带模型 31/31�
 node .dsh/verify-mcp.cjs                       # MCP 协议级（需 AI_MCP_ENABLED=true）
 node .dsh/verify-score-changelog-ui.cjs        # 成绩变更日志页实机 33/33（需 dev server）
 node .dsh/eval-rag.cjs --strict-faithfulness   # RAG（需 AI_RAG_ENABLED=true + 独占运行）
-mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 324 项
+mvn -o -B test -pl edu-api -am                 # 后端全量测试      期望 326 项
 ```
 
 > ⚠️ **依赖模型的脚本一次只跑一个**：本机 Ollama 串行处理请求，并发会让嵌入调用排队超时、
