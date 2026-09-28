@@ -105,11 +105,14 @@ describe('差异推导（这一页的核心）', () => {
     expect(parts[0]).toMatchObject({ label: '考试', before: '90', after: '30', changed: true })
     expect(parts[1]).toMatchObject({ label: '总评', before: '86', after: '50', changed: true })
   })
-
   it('before/after 不会被弄反', () => {
-    const [part] = scoreDiffParts(log({ beforeTotal: 86, afterTotal: 50 }), true)
-    expect(part.before).toBe('86')
-    expect(part.after).toBe('50')
+    // 注意：本项目开了 noUncheckedIndexedAccess，`parts[0].before` 这类写法会报
+    // "possibly undefined"（CI 的 vue-tsc 会检查测试文件，本地漏跑过一次）。
+    // 用可选链 + 先断言长度，既过类型检查，也不需要用非空断言 `!` 掩盖真实风险。
+    const parts = scoreDiffParts(log({ beforeTotal: 86, afterTotal: 50 }), true)
+    expect(parts).toHaveLength(1)
+    expect(parts[0]?.before).toBe('86')
+    expect(parts[0]?.after).toBe('50')
   })
 
   it('"通过"状态翻转也算变化', () => {
