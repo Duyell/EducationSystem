@@ -1,4 +1,4 @@
-# AI 模块代码导读（48 个文件怎么读）
+# AI 模块代码导读（49 个文件怎么读）
 
 > 目的：给你一条**最短的理解路径**。核心原则——**别按目录顺序读，按"入口 → 主链 → 分支"读**。
 > 配套：`docs/AI模块架构文档.md`（分层讲解）、`docs/Agent学习地图与面试要点.md`（知识点与面试要点）。
@@ -7,7 +7,7 @@
 
 ## 一、先看总量：48 个文件，但只要精读 6 个
 
-`backend/.../duyell/ai/` 下共 48 个 Java 文件。**约 1600 行覆盖 80% 的理解**：
+`backend/.../duyell/ai/` 下共 49 个 Java 文件。**约 1600 行覆盖 80% 的理解**：
 
 | 顺序 | 文件 | 行数 | 读它回答什么 |
 |---|---|---|---|
@@ -83,7 +83,7 @@ POST /ai/chat
 ```
 … 走到 risk == DANGEROUS
  ├─ events.publish(CONFIRM, confirmId, 展示名, 参数摘要)   // 前端弹确认卡片
- ├─ confirmationGate.suspend(...)                          // 待确认动作存 Redis（5 分钟有效），线程等待
+ ├─ confirmationGate.suspend(...)                          // 待确认动作存 Redis（TTL = 确认超时，默认 180 秒），线程等待
  └─ 本轮结束，**数据库零变化**
 
 用户点「确认」→ POST /ai/confirm

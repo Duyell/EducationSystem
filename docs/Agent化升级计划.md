@@ -604,7 +604,7 @@ npm run build-only            # 沙箱下需提权：Vite 配置加载会 child_
 |---|---|---|
 | 0.1 工具白名单双校验 ✅ | 执行前校验 `toolDef` 存在且**属于当前角色**（现有 `getTool(name)` 是全局查，学生理论上能触发教师工具名），未知工具直接拒绝并记审计 | `ToolRegistry.executeForRole(...)` |
 | 0.2 参数 Schema 校验 ✅ | 自研轻量校验器（离线环境无法引入 `networknt/json-schema-validator`）：覆盖 object/string/integer/number/boolean/array + required/enum/min-max/minLength/maxLength/minItems/maxItems/items；失败回给模型可读错误让它重试 | `ToolArgumentValidator`、`JsonSchemaToolArgumentValidator` |
-| 0.3 危险操作 HITL 确认 ✅ | `ToolDefinition` 增加 `RiskLevel { READ_ONLY, WRITE, DANGEROUS }`；DANGEROUS（选课/退课/录成绩/改成绩/评价）**不直接执行**，挂起为待确认请求，SSE 推 `confirm` 事件带 `confirmId + 工具名 + 参数摘要`；前端渲染确认卡片 → 用户点确认 → 携带 `confirmId` 继续执行 | `ConfirmationGate`、`PendingActionStore`(Redis, TTL 5min)、前端确认卡片组件 |
+| 0.3 危险操作 HITL 确认 ✅ | `ToolDefinition` 增加 `RiskLevel { READ_ONLY, WRITE, DANGEROUS }`；DANGEROUS（选课/退课/录成绩/改成绩/评价）**不直接执行**，挂起为待确认请求，SSE 推 `confirm` 事件带 `confirmId + 工具名 + 参数摘要`；前端渲染确认卡片 → 用户点确认 → 携带 `confirmId` 继续执行 | `ConfirmationGate`、`PendingActionStore`(Redis, TTL = 确认超时，默认 180 秒)、前端确认卡片组件 |
 | 0.4 确认令牌服务端持有 ✅ | 前端只回传 `confirmId`，**绝不回传工具名/参数**（否则等于给了前端任意工具调用权）；服务端取出暂存参数执行 | 同上 |
 | 0.5 审计日志 ✅ | 新表 `ai_tool_audit`：`id, user_id, role, session_id, tool_name, risk_level, args_json, result_json, status(SUCCESS/FAILED/DENIED/REJECTED_BY_USER), error_msg, confirm_id, request_id, duration_ms, created_at` | `docs/sql/2026-09-19-ai-audit-migration.sql`、`AiAuditService` |
 | 0.6 幂等保护 ✅ | 以 confirmId 为幂等键：执行前查 `findSuccessfulByRequestId`，命中则复用既有结果不重复写库；只认 SUCCESS（失败/拒绝不拦重试）。范围限于经人工确认的写操作，直连写工具由业务层唯一约束兜底 | `ai_tool_audit.request_id` + `uk_ai_audit_request` |
