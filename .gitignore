@@ -58,6 +58,12 @@ __screenshots__/
 # 评测基线等运行日志
 .dsh/baseline-*.log
 
+# ---------- 简历与相关处理脚本/产物 ----------
+# ⚠️ 简历含手机号/邮箱等个人信息，而本仓库是**公开**的，绝不入库。
+*.docx
+.dsh/resume-*
+.dsh/*docx*.py
+
 # 系统文件
 .DS_Store
 Thumbs.db
