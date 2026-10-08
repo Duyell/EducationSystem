@@ -612,10 +612,64 @@ public Outcome run(Request req, EventSink events) {
 
 ### 10.2 权限与执行边界（四道闸门，可迁移到任何项目）
 
+四道闸门一句话版：
 1. **角色白名单**：模型给的工具名不可信，按「角色 + 名字」查表，查不到直接拒并回灌原因；
 2. **参数 Schema 校验**：执行前用**同一份 Schema** 再校验（与给模型看的那份同源，避免漂移）；
 3. **人工确认（HITL）**：不可逆写操作挂起等用户确认，**确认前不产生任何数据变更**；
 4. **审计留痕**：每次调用（含被拒）记录 谁/何时/哪个工具/参数/结果/成败/耗时。
+
+#### 上面这四条里，三个词最容易把人绕晕，逐个拆开（**用人话 + 代码**）
+
+**① "Schema" 是什么？** —— 就是**参数说明书**，一段 JSON：有哪些参数、什么类型、哪些必填、取值范围。
+
+```json
+// get_my_gpa 的参数 Schema（描述里只有可选参数，所以 required 是空数组）
+{ "type": "object",
+  "properties": { "term": { "type": "string", "description": "学期，如 2024-2025-1" } },
+  "required": [] }
+```
+它有两个用途：**发给模型**（告诉它参数怎么填）+ **服务端拿来校验**（检查它填得对不对）。
+
+**② "同一份 Schema / 同源"是什么意思？** —— 指的是这两个用途**用的是同一个对象**，不是两份手写的东西。
+
+```
+❌ 常见坏做法：给模型看的参数说明手写一份 JSON；服务端校验另写一堆 if-else
+   → 两边会"漂移"：模型按 A 填，你用 B 校验 → 合法的被拒 / 非法的通过
+
+✅ 本项目：Schema 由框架从 Java 方法参数自动生成，存在 ToolDefinition.parameters 里，然后
+   发给模型：ToolRegistry.toToolsPayload() → func.put("parameters", def.parameters())
+   自己校验：AgentRuntime → validator.validate(toolDef.parameters(), parsedArgs)
+                            ↑ 两处取的是同一个 Map，所以不可能不一致
+```
+
+**③ "工具名不可信""按角色 + 名字查表"查的是什么表？** —— **不是数据库表**，是启动时装配在内存里的
+**工具注册表**（`ToolRegistry`）：
+
+```java
+// 注册表就是两个 Map：角色 → (工具名 → 工具定义) / 角色 → 允许的工具名集合
+Map<String, Map<String, ToolDefinition>> roleTools;    // 启动时由 @Tool 扫描器填好
+Map<String, Set<String>>                 roleToolNames; // 学生 17 个 / 教师 7 个 / 管理员 9 个
+
+// 运行时（AgentRuntime）：
+if (!toolRegistry.isAllowedForRole(role, toolName)) {   // 等价于 roleToolNames.get(role).contains(name)
+    // 拒绝：不执行 → 把原因当工具结果回灌给模型 → 审计记 DENIED
+}
+ToolDefinition def = toolRegistry.getTool(role, toolName);   // 通过了才取真正要执行的定义
+```
+
+**"工具名不可信"到底指什么**：模型输出的工具名只是**一段字符串**，它可能
+① 编一个不存在的名字（`query_student_gpa`）；② 请求一个存在但**不属于当前角色**的工具
+（学生会话里请求 `list_students`，那是管理员的）；③ 拼错或大小写不对。
+所以服务端**绝不能**拿这个名字直接去执行——必须回到自己维护的表里核对，核对通过才执行。
+
+**为什么必须带"角色"查**：同一个工具名在不同角色下是**两份不同实现**。
+例如 `get_my_courses`：对学生是"我选的课"，对教师是"我教的课"。
+早期版本只按名字存了一个全局 Map，两个注册器互相覆盖 →
+学生问"我选了什么课"，实际执行了教师那份实现（拿学号当工号查）→ 返回空列表，
+而且**所有测试还是绿的**。所以定案是**按「角色 + 名字」隔离**。
+
+**查不到为什么不是抛异常**：抛异常 → 用户看到 500、模型也拿不到反馈；
+回灌 → 模型看到"无权限或工具不存在"，能换个工具或直接回答，对话不中断。两种情况都记审计。
 
 ### 10.3 HITL 的工程实现（细节题）
 
